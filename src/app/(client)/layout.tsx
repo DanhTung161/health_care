@@ -1,5 +1,5 @@
-import Header from "@/components/client/Header"; // Header tự định nghĩa
-import Footer from "@/components/client/Footer"; // Footer tự định nghĩa
+import Header from "@/components/client/Header";
+import Footer from "@/components/client/Footer";
 
 export default function ClientLayout({
   children,

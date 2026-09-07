@@ -1,5 +1,31 @@
-import { NextResponse } from "next/server";
-import { users } from "@/app/api/_data";
+import { NextRequest, NextResponse } from 'next/server';
+import type { Filter } from 'mongodb';
+import connectDB from '@/lib/db';
+import User, { IUser } from '@/models/User';
 
-export async function GET() { return NextResponse.json({ data: users, total: users.length }); }
-export async function POST(request: Request) { const body = await request.json().catch(() => ({})); const user = { id: "u-004", name: body.name ?? "New Team Member", email: body.email ?? "new.member@healthnexus.com", role: body.role ?? "Staff", status: body.status ?? "active", lastLogin: "Never" }; return NextResponse.json({ message: "User created", data: user }, { status: 201 }); }
+type FilterQuery<T> = Filter<T>;
+
+export async function GET() {
+  try {
+    await connectDB();
+    const query: FilterQuery<IUser> = { role: 'STAFF' };
+    const staff = await User.find(query).sort({ name: 1 });
+    return NextResponse.json({ success: true, data: staff });
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred';
+    return NextResponse.json({ success: false, error: errorMessage }, { status: 500 });
+  }
+}
+
+export async function POST(req: NextRequest) {
+  try {
+    await connectDB();
+    const body = await req.json() as Partial<IUser>;
+    body.role = 'STAFF';
+    const newStaff = await User.create(body);
+    return NextResponse.json({ success: true, data: newStaff }, { status: 201 });
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred';
+    return NextResponse.json({ success: false, error: errorMessage }, { status: 400 });
+  }
+}

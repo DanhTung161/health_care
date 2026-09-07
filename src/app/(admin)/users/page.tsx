@@ -1,8 +1,113 @@
 import { Badge, Card, PageIntro } from "@/components/admin/AdminUI";
-import { users } from "@/app/api/_data";
+import connectDB from "@/lib/db";
+import User, { IUser } from "@/models/User";
 
-const roleTone = { Admin: "red", Doctor: "blue", Staff: "green" } as const;
+type UserListItem = Pick<
+  IUser,
+  "name" | "email" | "role" | "phone" | "isActive"
+> & {
+  _id: string;
+};
 
-export default function Users() {
-  return <div className="mx-auto max-w-[1400px]"><PageIntro title="User management" action="Add user" /><div className="mb-5 grid gap-4 sm:grid-cols-3"><Card><p className="text-sm text-slate-500">Total accounts</p><p className="mt-2 text-2xl font-bold">{users.length}</p></Card><Card><p className="text-sm text-slate-500">Active users</p><p className="mt-2 text-2xl font-bold text-emerald-600">{users.filter((user) => user.status === "active").length}</p></Card><Card><p className="text-sm text-slate-500">Available roles</p><p className="mt-2 text-2xl font-bold text-blue-600">3</p></Card></div><Card><div className="mb-5 flex flex-wrap items-center justify-between gap-3"><div><h3 className="font-bold text-slate-900">Accounts and permissions</h3><p className="mt-1 text-xs text-slate-400">Assign the right access level to every team member.</p></div><button className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm text-slate-600">Filter by role ▾</button></div><div className="overflow-x-auto"><table className="w-full min-w-[760px] text-left text-sm"><thead className="border-b border-slate-100 text-xs text-slate-400"><tr><th className="pb-3 font-medium">User</th><th className="pb-3 font-medium">User ID</th><th className="pb-3 font-medium">Role / permission</th><th className="pb-3 font-medium">Status</th><th className="pb-3 font-medium">Last login</th></tr></thead><tbody>{users.map((user) => <tr key={user.id} className="border-b border-slate-50 last:border-0"><td className="flex items-center gap-3 py-4"><span className="grid h-9 w-9 place-items-center rounded-full bg-blue-100 text-xs font-bold text-blue-700">{user.name.split(" ").map((part) => part[0]).join("")}</span><div><p className="font-semibold text-slate-800">{user.name}</p><p className="text-xs text-slate-400">{user.email}</p></div></td><td className="py-4 text-slate-500">{user.id}</td><td className="py-4"><Badge tone={roleTone[user.role as keyof typeof roleTone]}>{user.role}</Badge></td><td className="py-4"><Badge>{user.status}</Badge></td><td className="py-4 text-slate-500">{user.lastLogin}</td></tr>)}</tbody></table></div></Card></div>;
+const roleTone = {
+  ADMIN: "red",
+  DOCTOR: "blue",
+  STAFF: "green",
+} as const;
+
+async function getUsers(): Promise<UserListItem[]> {
+  await connectDB();
+  const users = await User.find({})
+    .select("-password")
+    .sort({ createdAt: -1 })
+    .lean();
+
+  return JSON.parse(JSON.stringify(users)) as UserListItem[];
+}
+
+export default async function Users() {
+  const users = await getUsers();
+
+  return (
+    <div className="mx-auto max-w-[1400px]">
+      <PageIntro title="User management" action="Add user" />
+      <div className="mb-5 grid gap-4 sm:grid-cols-3">
+        <Card>
+          <p className="text-sm text-slate-500">Total accounts</p>
+          <p className="mt-2 text-2xl font-bold">{users.length}</p>
+        </Card>
+        <Card>
+          <p className="text-sm text-slate-500">Active users</p>
+          <p className="mt-2 text-2xl font-bold text-emerald-600">
+            {users.filter((user) => user.isActive).length}
+          </p>
+        </Card>
+        <Card>
+          <p className="text-sm text-slate-500">Available roles</p>
+          <p className="mt-2 text-2xl font-bold text-blue-600">3</p>
+        </Card>
+      </div>
+      <Card>
+        <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h3 className="font-bold text-slate-900">
+              Accounts and permissions
+            </h3>
+            <p className="mt-1 text-xs text-slate-400">
+              Assign the right access level to every team member.
+            </p>
+          </div>
+          <button className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm text-slate-600">
+            Filter by role ▾
+          </button>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[760px] text-left text-sm">
+            <thead className="border-b border-slate-100 text-xs text-slate-400">
+              <tr>
+                <th className="pb-3 font-medium">User</th>
+                <th className="pb-3 font-medium">User ID</th>
+                <th className="pb-3 font-medium">Role / permission</th>
+                <th className="pb-3 font-medium">Status</th>
+                <th className="pb-3 font-medium">Phone</th>
+              </tr>
+            </thead>
+            <tbody>
+              {users?.map((user) => (
+                <tr
+                  key={user._id}
+                  className="border-b border-slate-50 last:border-0"
+                >
+                  <td className="flex items-center gap-3 py-4">
+                    <span className="grid h-9 w-9 place-items-center rounded-full bg-blue-100 text-xs font-bold text-blue-700">
+                      {user.name
+                        .split(" ")
+                        .map((part) => part[0])
+                        .join("")}
+                    </span>
+                    <div>
+                      <p className="font-semibold text-slate-800">
+                        {user.name}
+                      </p>
+                      <p className="text-xs text-slate-400">{user.email}</p>
+                    </div>
+                  </td>
+                  <td className="py-4 text-slate-500">{user._id}</td>
+                  <td className="py-4">
+                    <Badge tone={roleTone[user.role]}>{user.role}</Badge>
+                  </td>
+                  <td className="py-4">
+                    <Badge tone={user.isActive ? "green" : "amber"}>
+                      {user.isActive ? "Active" : "Inactive"}
+                    </Badge>
+                  </td>
+                  <td className="py-4 text-slate-500">{user.phone ?? "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+    </div>
+  );
 }

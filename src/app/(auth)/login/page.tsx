@@ -2,20 +2,89 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import FormField from "@/components/auth/FormField";
 
-export default function Page() {
-  const [isSubmitting, setIsSubmitting] = useState(false);
+type Role = "ADMIN" | "DOCTOR" | "STAFF";
 
-  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+interface LoginResponse {
+  success: boolean;
+  message?: string;
+  error?: string;
+  data?: {
+    id: string;
+    name: string;
+    email: string;
+    role: Role;
+  };
+}
+
+const roleLandingPage: Record<Role, string> = {
+  ADMIN: "/dashboard",
+  DOCTOR: "/appointments",
+  STAFF: "/patients",
+};
+
+const clinicalRoutePrefixes = ["/appointments", "/patients"];
+
+function getDestination(callbackUrl: string | null, role: Role): string {
+  if (!callbackUrl || !callbackUrl.startsWith("/") || callbackUrl.startsWith("//")) {
+    return roleLandingPage[role];
+  }
+
+  if (role === "ADMIN") {
+    return callbackUrl;
+  }
+
+  const callbackPath = callbackUrl.split("?", 1)[0];
+  const isClinicalRoute = clinicalRoutePrefixes.some(
+    (routePrefix) =>
+      callbackPath === routePrefix || callbackPath.startsWith(`${routePrefix}/`),
+  );
+
+  return isClinicalRoute ? callbackUrl : roleLandingPage[role];
+}
+
+export default function Page() {
+  const router = useRouter();
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
+
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const formData = new FormData(event.currentTarget);
-    const email = String(formData.get("email") ?? "").toLowerCase();
-    const role = email.includes("sarah") ? "Admin" : email.includes("emily") || email.includes("michael") ? "Doctor" : "Staff";
-    document.cookie = `healthnexus.session=demo-session; path=/; max-age=86400; samesite=lax`;
-    document.cookie = `healthnexus.role=${role}; path=/; max-age=86400; samesite=lax`;
     setIsSubmitting(true);
-    window.setTimeout(() => { window.location.assign("/dashboard"); }, 500);
+    setErrorMessage("");
+
+    const formData = new FormData(event.currentTarget);
+    const email = String(formData.get("email") ?? "").trim().toLowerCase();
+    const password = String(formData.get("password") ?? "");
+
+    try {
+      const response = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({ email, password }),
+      });
+      const result = (await response.json()) as LoginResponse;
+
+      if (!response.ok || !result.success || !result.data) {
+        setErrorMessage(result.message ?? result.error ?? "Đăng nhập thất bại.");
+        return;
+      }
+
+      const callbackUrl = new URLSearchParams(window.location.search).get(
+        "callbackUrl",
+      );
+      router.replace(getDestination(callbackUrl, result.data.role));
+      router.refresh();
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Không thể kết nối đến máy chủ.";
+      setErrorMessage(message);
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
   return (
@@ -26,7 +95,7 @@ export default function Page() {
           className="mb-7 flex items-center justify-center gap-2 text-lg font-bold text-slate-900"
         >
           <span className="grid h-9 w-9 place-items-center rounded-xl bg-blue-600 text-white">
-            ✚
+            ✓
           </span>
           HealthNexus
         </Link>
@@ -36,7 +105,7 @@ export default function Page() {
               Chào mừng trở lại
             </h1>
             <p className="mt-2 text-sm text-slate-500">
-              Đăng nhập để tiếp tục theo dõi sức khoẻ của bạn.
+              Đăng nhập để tiếp tục theo dõi sức khỏe của bạn.
             </p>
           </div>
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
@@ -62,6 +131,14 @@ export default function Page() {
                 Quên mật khẩu?
               </Link>
             </div>
+            {errorMessage && (
+              <p
+                role="alert"
+                className="rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-600"
+              >
+                {errorMessage}
+              </p>
+            )}
             <button
               type="submit"
               disabled={isSubmitting}
@@ -81,7 +158,7 @@ export default function Page() {
           </p>
         </div>
         <p className="mt-6 text-center text-xs text-slate-400">
-          © 2026 HealthNexus. Chăm sóc sức khoẻ dễ dàng hơn.
+          © 2026 HealthNexus. Chăm sóc sức khỏe dễ dàng hơn.
         </p>
       </div>
     </main>

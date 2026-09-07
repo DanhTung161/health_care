@@ -1,5 +1,30 @@
-import { NextResponse } from "next/server";
-import { appointments } from "@/app/api/_data";
+import { NextRequest, NextResponse } from 'next/server';
+import connectDB from '@/lib/db';
+import Appointment, { IAppointment } from '@/models/Appointment';
 
-export async function GET() { return NextResponse.json({ data: appointments, total: appointments.length }); }
-export async function POST(request: Request) { const body = await request.json().catch(() => ({})); const appointment = { id: "a-004", patientId: body.patientId ?? "p-001", doctorId: body.doctorId ?? "d-001", date: body.date ?? "2026-09-06", time: body.time ?? "09:00", status: body.status ?? "scheduled", reason: body.reason ?? "Khám tổng quát" }; return NextResponse.json({ message: "Appointment created", data: appointment }, { status: 201 }); }
+export async function GET() {
+  try {
+    await connectDB();
+    // Liên kết thông tin Bệnh nhân và Bác sĩ
+    const appointments = await Appointment.find()
+      .populate('patientId', 'fullName phone')
+      .populate('doctorId', 'name')
+      .sort({ appointmentDate: -1 });
+    return NextResponse.json({ success: true, data: appointments });
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred';
+    return NextResponse.json({ success: false, error: errorMessage }, { status: 500 });
+  }
+}
+
+export async function POST(req: NextRequest) {
+  try {
+    await connectDB();
+    const body = await req.json() as Partial<IAppointment>;
+    const newAppointment = await Appointment.create(body);
+    return NextResponse.json({ success: true, data: newAppointment }, { status: 201 });
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred';
+    return NextResponse.json({ success: false, error: errorMessage }, { status: 400 });
+  }
+}

@@ -1,7 +1,67 @@
-import { NextResponse } from "next/server";
-import { users } from "@/app/api/_data";
+import { NextRequest, NextResponse } from 'next/server';
+import connectDB from '@/lib/db';
+import User, { IUser } from '@/models/User';
 
-type Context = { params: Promise<{ id: string }> };
-export async function GET(_request: Request, { params }: Context) { const { id } = await params; const user = users.find((item) => item.id === id); return user ? NextResponse.json({ data: user }) : NextResponse.json({ message: "User not found" }, { status: 404 }); }
-export async function PUT(request: Request, { params }: Context) { const { id } = await params; const body = await request.json().catch(() => ({})); const user = users.find((item) => item.id === id); if (!user) return NextResponse.json({ message: "User not found" }, { status: 404 }); return NextResponse.json({ message: "User updated", data: { ...user, ...body, id } }); }
-export async function DELETE(_request: Request, { params }: Context) { const { id } = await params; const user = users.find((item) => item.id === id); return user ? NextResponse.json({ message: "User deleted", data: user }) : NextResponse.json({ message: "User not found" }, { status: 404 }); }
+type RouteContext = { params: Promise<{ id: string }> };
+
+export async function GET(_req: NextRequest, { params }: RouteContext) {
+  try {
+    await connectDB();
+    const { id } = await params;
+    const user = await User.findById(id).populate('specialtyId', 'name description')
+      .select('-password'); 
+
+    if (!user) {
+      return NextResponse.json({ success: false, message: 'User not found' }, { status: 404 });
+    }
+
+    return NextResponse.json({ success: true, data: user }, { status: 200 });
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred';
+    return NextResponse.json({ success: false, error: errorMessage }, { status: 500 });
+  }
+}
+
+export async function PUT(req: NextRequest, { params }: RouteContext) {
+  try {
+    await connectDB();
+    const { id } = await params;
+    const body = await req.json() as Partial<IUser>;
+
+    if (body.password) {
+      delete body.password; 
+    }
+
+    const updatedUser = await User.findByIdAndUpdate(
+      id,
+      body, 
+      { new: true, runValidators: true }
+    ).select('-password');
+
+    if (!updatedUser) {
+      return NextResponse.json({ success: false, message: 'User not found' }, { status: 404 });
+    }
+
+    return NextResponse.json({ success: true, data: updatedUser }, { status: 200 });
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred';
+    return NextResponse.json({ success: false, error: errorMessage }, { status: 400 });
+  }
+}
+
+export async function DELETE(_req: NextRequest, { params }: RouteContext) {
+  try {
+    await connectDB();
+    const { id } = await params;
+    const deletedUser = await User.findByIdAndDelete(id);
+    
+    if (!deletedUser) {
+      return NextResponse.json({ success: false, message: 'User not found' }, { status: 404 });
+    }
+
+    return NextResponse.json({ success: true, message: 'User deleted successfully' }, { status: 200 });
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred';
+    return NextResponse.json({ success: false, error: errorMessage }, { status: 500 });
+  }
+}

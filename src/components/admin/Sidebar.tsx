@@ -2,94 +2,48 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { BarChart3, CalendarDays, ChevronLeft, ChevronRight, CreditCard, Grid2X2, LogOut, Settings, Stethoscope, UserRound, Users, X } from "lucide-react";
+import { useAdminSidebar } from "@/context/AdminSidebarContext";
 
 const items = [
-  ["Dashboard", "/dashboard", "grid"],
-  ["Patients", "/patients", "users"],
-  ["Appointments", "/appointments", "calendar"],
-  ["Doctors", "/doctors", "doctor"],
-  ["Billing", "/billing", "card"],
-  ["Analytics", "/analytics", "chart"],
-  ["Users", "/users", "user"],
-] as const;
-function Icon({ name }: { name: string }) {
-  const paths: Record<string, string> = {
-    grid: "M4 4h5v5H4zM15 4h5v5h-5zM4 15h5v5H4zM15 15h5v5h-5z",
-    users:
-      "M16 20v-1.5a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4V20m6-9a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm5-5a3 3 0 0 1 0 6m3 8v-1.5a4 4 0 0 0-3-3.87",
-    calendar: "M5 4v3m14-3v3M4 9h16M5 5h14a1 1 0 0 1 1 1v13H4V6a1 1 0 0 1 1-1Z",
-    doctor:
-      "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm-7 8a7 7 0 0 1 14 0m-7-8v4l2 2",
-    card: "M3 7h18v10H3zM3 11h18",
-    chart: "M4 19V5m0 14h17M8 16l3-4 3 2 5-7",
-    user: "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm-7 8a7 7 0 0 1 14 0",
-    settings:
-      "M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Zm7-3.5 2-1.2-2-3.5-2.2.9a7.7 7.7 0 0 0-1.8-1L14.7 5h-5l-.3 2.2a7.7 7.7 0 0 0-1.8 1L5.4 7.3l-2 3.5 2 1.2v2.1l-2 1.2 2 3.5 2.2-.9c.5.4 1.1.7 1.8 1l.3 2.2h5l.3-2.2a7.7 7.7 0 0 0 1.8-1l2.2.9 2-3.5-2-1.2v-2.1Z",
-  };
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.7"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className="h-[19px] w-[19px]"
-    >
-      <path d={paths[name]} />
-    </svg>
-  );
-}
+  { label: "Dashboard", href: "/dashboard", icon: Grid2X2 },
+  { label: "Patients", href: "/patients", icon: Users },
+  { label: "Appointments", href: "/appointments", icon: CalendarDays },
+  { label: "Doctors", href: "/doctors", icon: Stethoscope },
+  { label: "Billing", href: "/billing", icon: CreditCard },
+  { label: "Analytics", href: "/analytics", icon: BarChart3 },
+  { label: "Users", href: "/users", icon: UserRound },
+];
+
 export default function AdminSidebar() {
   const pathname = usePathname();
+  const { isCollapsed, isMobileOpen, toggleCollapsed, closeMobile } = useAdminSidebar();
+
   function handleLogout() {
     document.cookie = "healthnexus.session=; path=/; max-age=0";
     document.cookie = "healthnexus.role=; path=/; max-age=0";
     document.cookie = "better-auth.session_token=; path=/; max-age=0";
     window.location.assign("/login");
   }
-  return (
-    <aside className="flex w-[238px] shrink-0 flex-col border-r border-slate-200/80 bg-white px-4 py-6">
-      <Link
-        href="/dashboard"
-        className="mb-10 flex items-center gap-3 px-2 text-[17px] font-bold text-slate-900"
-      >
-        <span className="grid h-9 w-9 place-items-center rounded-xl bg-blue-600 text-white shadow-sm shadow-blue-200">
-          <span className="text-xl">✚</span>
-        </span>
-        HealthNexus
-      </Link>
+
+  return <>
+    {isMobileOpen && <button type="button" aria-label="Close sidebar" onClick={closeMobile} className="fixed inset-0 z-40 bg-black/50 md:hidden" />}
+    <aside className={`fixed inset-y-0 left-0 z-50 flex w-[260px] flex-col border-r border-slate-200/80 bg-white px-4 py-6 shadow-xl transition-all duration-300 md:relative md:z-auto md:shadow-none ${isMobileOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"} ${isCollapsed ? "md:w-[76px]" : "md:w-[238px]"}`}>
+      <div className={`mb-10 flex items-center ${isCollapsed ? "md:justify-center" : "justify-between"}`}>
+        <Link href="/dashboard" onClick={closeMobile} aria-label="HealthNexus dashboard" className="flex items-center gap-3 px-2 text-[17px] font-bold text-slate-900">
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-blue-600 text-white shadow-sm shadow-blue-200">✚</span>
+          <span className={isCollapsed ? "md:hidden" : ""}>HealthNexus</span>
+        </Link>
+        <button type="button" onClick={closeMobile} aria-label="Close sidebar" className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 md:hidden"><X className="h-5 w-5" /></button>
+      </div>
       <nav className="space-y-1">
-        {items.map(([label, href, icon]) => {
-          const active = pathname === href || pathname.startsWith(`${href}/`);
-          return (
-            <Link
-              key={href}
-              href={href}
-              className={`flex items-center gap-3 rounded-xl px-3 py-3 text-[14px] font-medium transition ${active ? "bg-blue-600 text-white shadow-md shadow-blue-200" : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"}`}
-            >
-              <Icon name={icon} />
-              {label}
-            </Link>
-          );
-        })}
+        {items.map(({ label, href, icon: Icon }) => { const active = pathname === href || pathname.startsWith(`${href}/`); return <Link key={href} href={href} onClick={closeMobile} title={isCollapsed ? label : undefined} className={`flex items-center gap-3 rounded-xl px-3 py-3 text-[14px] font-medium transition-all duration-300 ${isCollapsed ? "md:justify-center" : ""} ${active ? "bg-blue-600 text-white shadow-md shadow-blue-200" : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"}`}><Icon className="h-[19px] w-[19px] shrink-0" /> <span className={isCollapsed ? "md:hidden" : ""}>{label}</span></Link>; })}
       </nav>
       <div className="mt-auto space-y-1 border-t border-slate-100 pt-5">
-        <Link
-          href="/settings"
-          className="flex items-center gap-3 rounded-xl px-3 py-3 text-[14px] font-medium text-slate-500 hover:bg-slate-50 hover:text-slate-900"
-        >
-          <Icon name="settings" />
-          Settings
-        </Link>
-        <Link
-          href="/"
-          onClick={handleLogout}
-          className="flex items-center gap-3 rounded-xl px-3 py-3 text-[14px] font-medium text-rose-500 hover:bg-rose-50"
-        >
-          <span className="text-lg">↪</span>Logout
-        </Link>
+        <Link href="/settings" onClick={closeMobile} title={isCollapsed ? "Settings" : undefined} className={`flex items-center gap-3 rounded-xl px-3 py-3 text-[14px] font-medium text-slate-500 transition-all duration-300 hover:bg-slate-50 hover:text-slate-900 ${isCollapsed ? "md:justify-center" : ""}`}><Settings className="h-[19px] w-[19px] shrink-0" /><span className={isCollapsed ? "md:hidden" : ""}>Settings</span></Link>
+        <button type="button" onClick={handleLogout} title={isCollapsed ? "Logout" : undefined} className={`flex w-full items-center gap-3 rounded-xl px-3 py-3 text-[14px] font-medium text-rose-500 transition-all duration-300 hover:bg-rose-50 ${isCollapsed ? "md:justify-center" : ""}`}><LogOut className="h-[19px] w-[19px] shrink-0" /><span className={isCollapsed ? "md:hidden" : ""}>Logout</span></button>
+        <button type="button" onClick={toggleCollapsed} aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"} className="mt-3 hidden w-full items-center justify-center rounded-xl border border-slate-200 py-2 text-slate-500 transition hover:bg-slate-50 md:flex">{isCollapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}</button>
       </div>
     </aside>
-  );
+  </>;
 }

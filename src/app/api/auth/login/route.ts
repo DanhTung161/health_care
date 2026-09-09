@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import { AUTH_COOKIE } from "@/lib/auth-constants";
 import connectDB from "@/lib/db";
+import { isRole, type Role } from "@/lib/roles";
 import User from "@/models/User";
-
-type Role = "ADMIN" | "DOCTOR" | "STAFF";
 
 interface JwtPayload {
   userId: string;
@@ -15,10 +15,6 @@ interface JwtPayload {
 interface LoginRequestBody {
   email: string;
   password: string;
-}
-
-function isRole(value: unknown): value is Role {
-  return value === "ADMIN" || value === "DOCTOR" || value === "STAFF";
 }
 
 function isLoginRequestBody(value: unknown): value is LoginRequestBody {
@@ -46,7 +42,7 @@ export async function POST(request: NextRequest) {
     const password = requestBody.password;
 
     await connectDB();
-    const user = await User.findOne({ email, isActive: true });
+    const user = await User.findOne({ email, isActive: true }).select("+password");
 
     if (!user || !user.password) {
       return NextResponse.json(
@@ -99,7 +95,7 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    response.cookies.set("auth_token", token, {
+    response.cookies.set(AUTH_COOKIE, token, {
       httpOnly: true,
       path: "/",
       maxAge: 60 * 60 * 24,

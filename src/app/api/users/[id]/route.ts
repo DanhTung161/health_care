@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { authorizeAdmin } from '@/lib/auth';
 import connectDB from '@/lib/db';
 import User, { IUser } from '@/models/User';
 
@@ -6,6 +7,14 @@ type RouteContext = { params: Promise<{ id: string }> };
 
 export async function GET(_req: NextRequest, { params }: RouteContext) {
   try {
+    const authorization = await authorizeAdmin(_req);
+    if (!authorization.ok) {
+      return NextResponse.json(
+        { success: false, error: authorization.status === 401 ? 'Authentication required' : 'Forbidden: administrator access required' },
+        { status: authorization.status },
+      );
+    }
+
     await connectDB();
     const { id } = await params;
     const user = await User.findById(id).populate('specialtyId', 'name description')
@@ -24,6 +33,14 @@ export async function GET(_req: NextRequest, { params }: RouteContext) {
 
 export async function PUT(req: NextRequest, { params }: RouteContext) {
   try {
+    const authorization = await authorizeAdmin(req);
+    if (!authorization.ok) {
+      return NextResponse.json(
+        { success: false, error: authorization.status === 401 ? 'Authentication required' : 'Forbidden: administrator access required' },
+        { status: authorization.status },
+      );
+    }
+
     await connectDB();
     const { id } = await params;
     const body = await req.json() as Partial<IUser>;
@@ -51,6 +68,14 @@ export async function PUT(req: NextRequest, { params }: RouteContext) {
 
 export async function DELETE(_req: NextRequest, { params }: RouteContext) {
   try {
+    const authorization = await authorizeAdmin(_req);
+    if (!authorization.ok) {
+      return NextResponse.json(
+        { success: false, error: authorization.status === 401 ? 'Authentication required' : 'Forbidden: administrator access required' },
+        { status: authorization.status },
+      );
+    }
+
     await connectDB();
     const { id } = await params;
     const deletedUser = await User.findByIdAndDelete(id);

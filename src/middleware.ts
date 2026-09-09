@@ -1,7 +1,12 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-
-type Role = "ADMIN" | "DOCTOR" | "STAFF";
+import { AUTH_COOKIE } from "@/lib/auth-constants";
+import {
+  allowedRoutePrefixes,
+  isRole,
+  roleLandingPage,
+  type Role,
+} from "@/lib/roles";
 
 interface JwtPayload {
   userId: string;
@@ -11,24 +16,8 @@ interface JwtPayload {
   iat?: number;
 }
 
-const AUTH_COOKIE = "auth_token";
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
-
-const roleLandingPage: Record<Role, string> = {
-  ADMIN: "/dashboard",
-  DOCTOR: "/appointments",
-  STAFF: "/patients",
-};
-
-const allowedRoutePrefixes: Record<Exclude<Role, "ADMIN">, string[]> = {
-  DOCTOR: ["/appointments", "/patients", "/api/appointments", "/api/patients"],
-  STAFF: ["/appointments", "/patients", "/api/appointments", "/api/patients"],
-};
-
-function isRole(value: unknown): value is Role {
-  return value === "ADMIN" || value === "DOCTOR" || value === "STAFF";
-}
 
 function isJwtPayload(value: unknown): value is JwtPayload {
   if (!value || typeof value !== "object") {

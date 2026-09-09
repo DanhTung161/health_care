@@ -1,6 +1,10 @@
 import { Badge, Card, PageIntro } from "@/components/admin/AdminUI";
+import CreateUserForm from "@/components/admin/CreateUserForm";
+import { getCurrentUser } from "@/lib/auth";
 import connectDB from "@/lib/db";
+import { roleLandingPage } from "@/lib/roles";
 import User, { IUser } from "@/models/User";
+import { redirect } from "next/navigation";
 
 type UserListItem = Pick<
   IUser,
@@ -26,11 +30,19 @@ async function getUsers(): Promise<UserListItem[]> {
 }
 
 export default async function Users() {
+  const currentUser = await getCurrentUser();
+  if (!currentUser) {
+    redirect("/login");
+  }
+  if (currentUser.role !== "ADMIN") {
+    redirect(`${roleLandingPage[currentUser.role]}?error=unauthorized`);
+  }
+
   const users = await getUsers();
 
   return (
     <div className="mx-auto max-w-[1400px]">
-      <PageIntro title="User management" action="Add user" />
+      <PageIntro title="User management" actionSlot={<CreateUserForm />} />
       <div className="mb-5 grid gap-4 sm:grid-cols-3">
         <Card>
           <p className="text-sm text-slate-500">Total accounts</p>

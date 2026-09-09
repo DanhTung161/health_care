@@ -17,9 +17,11 @@ export function Card({
 export function PageIntro({
   title,
   action,
+  actionSlot,
 }: {
   title: string;
   action?: string;
+  actionSlot?: ReactNode;
 }) {
   return (
     <div className="mb-6 flex items-center justify-between">
@@ -29,11 +31,11 @@ export function PageIntro({
           A clear overview of your clinic activity.
         </p>
       </div>
-      {action && (
+      {actionSlot ?? (action && (
         <button className="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm shadow-blue-200 hover:bg-blue-700">
           + {action}
         </button>
-      )}
+      ))}
     </div>
   );
 }

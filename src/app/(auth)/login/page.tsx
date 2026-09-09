@@ -4,8 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import FormField from "@/components/auth/FormField";
-
-type Role = "ADMIN" | "DOCTOR" | "STAFF";
+import { roleLandingPage, type Role } from "@/lib/roles";
 
 interface LoginResponse {
   success: boolean;
@@ -18,12 +17,6 @@ interface LoginResponse {
     role: Role;
   };
 }
-
-const roleLandingPage: Record<Role, string> = {
-  ADMIN: "/dashboard",
-  DOCTOR: "/appointments",
-  STAFF: "/patients",
-};
 
 const clinicalRoutePrefixes = ["/appointments", "/patients"];
 

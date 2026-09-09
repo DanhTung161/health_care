@@ -1,10 +1,11 @@
 import mongoose, { Schema, Document, models, model } from 'mongoose';
+import { USER_ROLES, type Role } from '@/lib/roles';
 
 export interface IUser extends Document {
   name: string;
   email: string;
-  password?: string;
-  role: 'ADMIN' | 'DOCTOR' | 'STAFF';
+  password: string;
+  role: Role;
   phone?: string;
   specialtyId?: mongoose.Types.ObjectId;
   biography?: string;
@@ -19,9 +20,9 @@ export interface IUser extends Document {
 
 const UserSchema = new Schema<IUser>({
   name: { type: String, required: true },
-  email: { type: String, required: true, unique: true },
-  password: { type: String, required: true },
-  role: { type: String, enum: ['ADMIN', 'DOCTOR', 'STAFF'], default: 'STAFF' },
+  email: { type: String, required: true, unique: true, trim: true, lowercase: true },
+  password: { type: String, required: true, select: false },
+  role: { type: String, enum: USER_ROLES, default: 'STAFF' },
   phone: { type: String },
   specialtyId: { type: Schema.Types.ObjectId, ref: 'Specialty' },
   biography: { type: String },

@@ -1,43 +1,206 @@
-import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '@/lib/db';
-import Patient, { IPatient } from '@/models/Patient';
+import mongoose from "mongoose";
+import { NextRequest, NextResponse } from "next/server";
+import { authenticateRequest, authorizeAdmin } from "@/lib/auth";
+import connectDB from "@/lib/db";
+import {
+  isDuplicateKeyError,
+  parsePatientInput,
+} from "@/lib/patient-management";
+import Patient from "@/models/Patient";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
-export async function GET(_req: NextRequest, { params }: RouteContext) {
+function authorizationError(status: 401 | 403) {
+  return NextResponse.json(
+    {
+      success: false,
+      error:
+        status === 401
+          ? "Authentication required"
+          : "Forbidden: administrator access required",
+    },
+    { status },
+  );
+}
+
+function invalidIdError() {
+  return NextResponse.json(
+    { success: false, error: "Invalid patient id" },
+    { status: 400 },
+  );
+}
+
+export async function GET(request: NextRequest, { params }: RouteContext) {
+  if (!(await authenticateRequest(request))) return authorizationError(401);
+
+  const { id } = await params;
+  if (!mongoose.isValidObjectId(id)) return invalidIdError();
+
   try {
     await connectDB();
-    const { id } = await params;
-    const patient = await Patient.findById(id);
-    if (!patient) return NextResponse.json({ success: false, message: 'Not found' }, { status: 404 });
+    // Archived records remain directly retrievable for historical references.
+    const patient = await Patient.findById(id).populate(
+      "medicalRecords.doctorId",
+      "name specialtyId",
+    );
+    if (!patient) {
+      return NextResponse.json(
+        { success: false, error: "Patient not found" },
+        { status: 404 },
+      );
+    }
+    return NextResponse.json({ success: true, data: patient });
+  } catch {
+    return NextResponse.json(
+      { success: false, error: "Unable to load patient" },
+      { status: 500 },
+    );
+  }
+}
+
+export async function PUT(request: NextRequest, { params }: RouteContext) {
+  const authorization = await authorizeAdmin(request);
+  if (!authorization.ok) return authorizationError(authorization.status);
+
+  const { id } = await params;
+  if (!mongoose.isValidObjectId(id)) return invalidIdError();
+
+  let body: unknown;
+  try {
+    body = (await request.json()) as unknown;
+  } catch {
+    return NextResponse.json(
+      { success: false, error: "Request body must be valid JSON" },
+      { status: 400 },
+    );
+  }
+
+  const parsed = parsePatientInput(body, true);
+  if ("error" in parsed) {
+    return NextResponse.json(
+      { success: false, error: parsed.error },
+      { status: 400 },
+    );
+  }
+
+  try {
+    await connectDB();
+    const patient = await Patient.findByIdAndUpdate(id, parsed.data, {
+      new: true,
+      runValidators: true,
+    }).select(
+      "fullName phone identityCard gender dateOfBirth address deletedAt createdAt updatedAt",
+    );
+    if (!patient) {
+      return NextResponse.json(
+        { success: false, error: "Patient not found" },
+        { status: 404 },
+      );
+    }
     return NextResponse.json({ success: true, data: patient });
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred';
-    return NextResponse.json({ success: false, error: errorMessage }, { status: 500 });
+    if (isDuplicateKeyError(error)) {
+      return NextResponse.json(
+        { success: false, error: "A patient with this phone number already exists" },
+        { status: 409 },
+      );
+    }
+    return NextResponse.json(
+      { success: false, error: "Unable to update patient" },
+      { status: 500 },
+    );
   }
 }
 
-export async function PUT(req: NextRequest, { params }: RouteContext) {
+export async function DELETE(request: NextRequest, { params }: RouteContext) {
+  const authorization = await authorizeAdmin(request);
+  if (!authorization.ok) return authorizationError(authorization.status);
+
+  const { id } = await params;
+  if (!mongoose.isValidObjectId(id)) return invalidIdError();
+
   try {
     await connectDB();
-    const { id } = await params;
-    const body = await req.json() as Partial<IPatient>;
-    const updatedPatient = await Patient.findByIdAndUpdate(id, body, { new: true, runValidators: true });
-    return NextResponse.json({ success: true, data: updatedPatient });
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred';
-    return NextResponse.json({ success: false, error: errorMessage }, { status: 400 });
+    const patient = await Patient.findByIdAndUpdate(
+      id,
+      { deletedAt: new Date() },
+      { new: true, runValidators: true },
+    ).select(
+      "fullName phone identityCard gender dateOfBirth address deletedAt createdAt updatedAt",
+    );
+    if (!patient) {
+      return NextResponse.json(
+        { success: false, error: "Patient not found" },
+        { status: 404 },
+      );
+    }
+    return NextResponse.json({
+      success: true,
+      message: "Patient archived successfully",
+      data: patient,
+    });
+  } catch {
+    return NextResponse.json(
+      { success: false, error: "Unable to archive patient" },
+      { status: 500 },
+    );
   }
 }
 
-export async function DELETE(_req: NextRequest, { params }: RouteContext) {
+export async function PATCH(request: NextRequest, { params }: RouteContext) {
+  const authorization = await authorizeAdmin(request);
+  if (!authorization.ok) return authorizationError(authorization.status);
+
+  const { id } = await params;
+  if (!mongoose.isValidObjectId(id)) return invalidIdError();
+
+  let body: unknown;
+  try {
+    body = (await request.json()) as unknown;
+  } catch {
+    return NextResponse.json(
+      { success: false, error: "Request body must be valid JSON" },
+      { status: 400 },
+    );
+  }
+
+  if (
+    !body ||
+    typeof body !== "object" ||
+    Array.isArray(body) ||
+    Object.keys(body).length !== 1 ||
+    (body as Record<string, unknown>).action !== "restore"
+  ) {
+    return NextResponse.json(
+      { success: false, error: "Invalid restore request" },
+      { status: 400 },
+    );
+  }
+
   try {
     await connectDB();
-    const { id } = await params;
-    await Patient.findByIdAndDelete(id);
-    return NextResponse.json({ success: true, message: 'Deleted successfully' });
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred';
-    return NextResponse.json({ success: false, error: errorMessage }, { status: 500 });
+    const patient = await Patient.findByIdAndUpdate(
+      id,
+      { deletedAt: null },
+      { new: true, runValidators: true },
+    ).select(
+      "fullName phone identityCard gender dateOfBirth address deletedAt createdAt updatedAt",
+    );
+    if (!patient) {
+      return NextResponse.json(
+        { success: false, error: "Patient not found" },
+        { status: 404 },
+      );
+    }
+    return NextResponse.json({
+      success: true,
+      message: "Patient restored successfully",
+      data: patient,
+    });
+  } catch {
+    return NextResponse.json(
+      { success: false, error: "Unable to restore patient" },
+      { status: 500 },
+    );
   }
 }

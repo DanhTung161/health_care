@@ -1,124 +1,88 @@
-import { Card, PageIntro } from "@/components/admin/AdminUI";
+import PatientManagement, {
+  type PatientListItem,
+} from "@/components/admin/PatientManagement";
+import { getCurrentUser } from "@/lib/auth";
 import connectDB from "@/lib/db";
-import Patient, { IPatient } from "@/models/Patient";
+import {
+  buildPatientListQuery,
+  PATIENT_GENDERS,
+  PATIENT_LIST_STATES,
+  PATIENT_SORT_FIELDS,
+  type PatientGender,
+  type PatientListState,
+  type PatientSortField,
+} from "@/lib/patient-management";
+import Patient from "@/models/Patient";
 
-type PatientListItem = Omit<
-  Pick<
-    IPatient,
-    | "fullName"
-    | "phone"
-    | "gender"
-    | "identityCard"
-    | "address"
-    | "dateOfBirth"
-    | "medicalRecords"
-  >,
-  "dateOfBirth"
-> & {
-  _id: string;
-  dateOfBirth?: string;
-};
+type SearchParams = { [key: string]: string | string[] | undefined };
 
-const avatarColors = [
-  "bg-violet-100 text-violet-700",
-  "bg-blue-100 text-blue-700",
-  "bg-amber-100 text-amber-700",
-] as const;
+function first(value: string | string[] | undefined, fallback: string) {
+  return typeof value === "string" ? value : fallback;
+}
 
-async function getPatients(): Promise<PatientListItem[]> {
+export default async function Patients({
+  searchParams,
+}: {
+  searchParams: Promise<SearchParams>;
+}) {
+  const [params, currentUser] = await Promise.all([
+    searchParams,
+    getCurrentUser(),
+  ]);
+  const search = first(params.search, "").trim().slice(0, 200);
+
+  const requestedState = first(params.status, "active");
+  const state = PATIENT_LIST_STATES.includes(
+    requestedState as PatientListState,
+  )
+    ? (requestedState as PatientListState)
+    : "active";
+
+  const requestedGender = first(params.gender, "all");
+  const gender =
+    requestedGender === "all" ||
+    PATIENT_GENDERS.includes(requestedGender as PatientGender)
+      ? (requestedGender as PatientGender | "all")
+      : "all";
+
+  const requestedSortBy = first(params.sortBy, "createdAt");
+  const sortBy = PATIENT_SORT_FIELDS.includes(
+    requestedSortBy as PatientSortField,
+  )
+    ? (requestedSortBy as PatientSortField)
+    : "createdAt";
+  const sortOrder = first(params.sortOrder, "desc") === "asc" ? "asc" : "desc";
+
+  const requestedPage = Number(first(params.page, "1"));
+  const page =
+    Number.isSafeInteger(requestedPage) && requestedPage > 0
+      ? requestedPage
+      : 1;
+  const limit = 10;
+  const query = buildPatientListQuery({ search, state, gender });
+
   await connectDB();
-  const patients = await Patient.find({}).sort({ createdAt: -1 }).lean();
-
-  return JSON.parse(JSON.stringify(patients)) as PatientListItem[];
-}
-
-function getAge(dateOfBirth?: string): string {
-  if (!dateOfBirth) {
-    return "—";
-  }
-
-  const birthDate = new Date(dateOfBirth);
-  if (Number.isNaN(birthDate.getTime())) {
-    return "—";
-  }
-
-  const today = new Date();
-  let age = today.getFullYear() - birthDate.getFullYear();
-  const hasNotHadBirthday =
-    today.getMonth() < birthDate.getMonth() ||
-    (today.getMonth() === birthDate.getMonth() &&
-      today.getDate() < birthDate.getDate());
-
-  if (hasNotHadBirthday) {
-    age -= 1;
-  }
-
-  return String(age);
-}
-
-export default async function Patients() {
-  const patients = await getPatients();
+  const total = await Patient.countDocuments(query);
+  const totalPages = Math.max(1, Math.ceil(total / limit));
+  const currentPage = Math.min(page, totalPages);
+  const records = await Patient.find(query)
+    .select(
+      "fullName phone identityCard gender dateOfBirth address deletedAt createdAt updatedAt",
+    )
+    .sort({ [sortBy]: sortOrder === "asc" ? 1 : -1 })
+    .skip((currentPage - 1) * limit)
+    .limit(limit)
+    .lean();
+  const patients = JSON.parse(JSON.stringify(records)) as PatientListItem[];
 
   return (
     <div className="mx-auto max-w-[1400px]">
-      <PageIntro title="All patients" action="Add patient" />
-      <Card>
-        <div className="mb-5 flex flex-wrap gap-3">
-          <div className="flex h-10 min-w-64 flex-1 items-center rounded-xl bg-slate-50 px-3 text-sm text-slate-400">
-            ⌕ &nbsp; Search by name or patient ID...
-          </div>
-          <button className="rounded-xl border border-slate-200 px-4 text-sm text-slate-600">
-            Filter ▾
-          </button>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[760px] text-left text-sm">
-            <thead className="border-b border-slate-100 text-xs text-slate-400">
-              <tr>
-                <th className="pb-3 font-medium">Patient</th>
-                <th className="pb-3 font-medium">Patient ID</th>
-                <th className="pb-3 font-medium">Age</th>
-                <th className="pb-3 font-medium">Gender</th>
-                <th className="pb-3 font-medium">Phone</th>
-                <th className="pb-3 font-medium">Address</th>
-              </tr>
-            </thead>
-            <tbody>
-              {patients?.map((patient, index) => (
-                <tr
-                  key={patient._id}
-                  className="border-b border-slate-50 last:border-0"
-                >
-                  <td className="flex items-center gap-3 py-4">
-                    <span
-                      className={`grid h-9 w-9 place-items-center rounded-full text-xs font-bold ${avatarColors[index % avatarColors.length]}`}
-                    >
-                      {patient.fullName
-                        .split(" ")
-                        .map((part) => part[0])
-                        .join("")}
-                    </span>
-                    <span className="font-semibold text-slate-800">
-                      {patient.fullName}
-                    </span>
-                  </td>
-                  <td className="py-4 text-slate-500">
-                    {patient.identityCard ?? patient._id}
-                  </td>
-                  <td className="py-4 text-slate-500">
-                    {getAge(patient.dateOfBirth)}
-                  </td>
-                  <td className="py-4 text-slate-500">{patient.gender}</td>
-                  <td className="py-4 text-slate-500">{patient.phone}</td>
-                  <td className="py-4 text-slate-500">
-                    {patient.address ?? "—"}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </Card>
+      <PatientManagement
+        patients={patients}
+        pagination={{ page: currentPage, limit, total, totalPages }}
+        query={{ search, status: state, gender, sortBy, sortOrder }}
+        canManage={currentUser?.role === "ADMIN"}
+      />
     </div>
   );
 }

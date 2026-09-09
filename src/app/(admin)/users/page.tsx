@@ -1,5 +1,6 @@
 import { Badge, Card, PageIntro } from "@/components/admin/AdminUI";
 import CreateUserForm from "@/components/admin/CreateUserForm";
+import UserAccountActions from "@/components/admin/UserAccountActions";
 import { getCurrentUser } from "@/lib/auth";
 import connectDB from "@/lib/db";
 import { roleLandingPage } from "@/lib/roles";
@@ -74,7 +75,7 @@ export default async function Users() {
           </button>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[760px] text-left text-sm">
+          <table className="w-full min-w-[860px] text-left text-sm">
             <thead className="border-b border-slate-100 text-xs text-slate-400">
               <tr>
                 <th className="pb-3 font-medium">User</th>
@@ -82,6 +83,7 @@ export default async function Users() {
                 <th className="pb-3 font-medium">Role / permission</th>
                 <th className="pb-3 font-medium">Status</th>
                 <th className="pb-3 font-medium">Phone</th>
+                <th className="pb-3 font-medium">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -114,6 +116,12 @@ export default async function Users() {
                     </Badge>
                   </td>
                   <td className="py-4 text-slate-500">{user.phone ?? "—"}</td>
+                  <td className="py-4">
+                    <UserAccountActions
+                      user={user}
+                      isCurrentUser={user._id === currentUser.id}
+                    />
+                  </td>
                 </tr>
               ))}
             </tbody>

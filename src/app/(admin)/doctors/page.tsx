@@ -1,33 +1,40 @@
 import { Badge, Card, PageIntro } from "@/components/admin/AdminUI";
+import {
+  CreateDoctorForm,
+  DoctorActions,
+  type DoctorAccount,
+  type SpecialtyOption,
+} from "@/components/admin/DoctorManagementForms";
 import connectDB from "@/lib/db";
-import { ISpecialty } from "@/models/Specialty";
+import Specialty from "@/models/Specialty";
 import User, { IUser } from "@/models/User";
 
-type DoctorListItem = Pick<
-  IUser,
-  "name" | "email" | "phone" | "role" | "isActive"
-> & {
-  _id: string;
-  specialtyId?: Pick<ISpecialty, "name"> | null;
-};
+type DoctorListItem = DoctorAccount & Pick<IUser, "role">;
 
 async function getDoctors(): Promise<DoctorListItem[]> {
   await connectDB();
   const doctors = await User.find({ role: "DOCTOR" })
     .populate("specialtyId", "name")
-    .select("-password")
+    .select("name email phone role specialtyId isActive")
     .sort({ name: 1 })
     .lean();
 
   return JSON.parse(JSON.stringify(doctors)) as DoctorListItem[];
 }
 
+async function getSpecialties(): Promise<SpecialtyOption[]> {
+  await connectDB();
+  const specialties = await Specialty.find({}).select("name").sort({ name: 1 }).lean();
+
+  return JSON.parse(JSON.stringify(specialties)) as SpecialtyOption[];
+}
+
 export default async function Doctors() {
-  const doctors = await getDoctors();
+  const [doctors, specialties] = await Promise.all([getDoctors(), getSpecialties()]);
 
   return (
     <div className="mx-auto max-w-[1400px]">
-      <PageIntro title="Medical team" action="Add doctor" />
+      <PageIntro title="Medical team" actionSlot={<CreateDoctorForm specialties={specialties} />} />
       <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
         {doctors?.map((doctor) => (
           <Card key={doctor._id}>
@@ -59,7 +66,7 @@ export default async function Doctors() {
       <Card className="mt-5">
         <h3 className="mb-4 font-bold">Doctors directory</h3>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[650px] text-left text-sm">
+          <table className="w-full min-w-[760px] text-left text-sm">
             <thead className="border-b border-slate-100 text-xs text-slate-400">
               <tr>
                 <th className="pb-3 font-medium">Doctor</th>
@@ -67,6 +74,7 @@ export default async function Doctors() {
                 <th className="pb-3 font-medium">Specialty</th>
                 <th className="pb-3 font-medium">Email</th>
                 <th className="pb-3 font-medium">Availability</th>
+                <th className="pb-3 font-medium">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -87,6 +95,9 @@ export default async function Doctors() {
                     <Badge tone={doctor.isActive ? "green" : "amber"}>
                       {doctor.isActive ? "Available" : "Unavailable"}
                     </Badge>
+                  </td>
+                  <td className="py-4">
+                    <DoctorActions doctor={doctor} specialties={specialties} />
                   </td>
                 </tr>
               ))}

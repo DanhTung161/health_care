@@ -21,6 +21,7 @@ export interface IPatient extends Document {
   gender: 'MALE' | 'FEMALE' | 'OTHER';
   dateOfBirth?: Date;
   address?: string;
+  deletedAt: Date | null;
   medicalRecords: IMedicalRecord[];
 }
 
@@ -45,6 +46,7 @@ const PatientSchema = new Schema<IPatient>({
   gender: { type: String, enum: ['MALE', 'FEMALE', 'OTHER'] },
   dateOfBirth: { type: Date },
   address: { type: String },
+  deletedAt: { type: Date, default: null },
   medicalRecords: [MedicalRecordSchema]
 }, { timestamps: true });
 

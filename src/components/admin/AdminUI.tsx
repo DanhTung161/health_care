@@ -60,37 +60,3 @@ export function Badge({
     </span>
   );
 }
-export const patients = [
-  {
-    name: "Olivia Martin",
-    id: "PT-10482",
-    age: "34",
-    condition: "General checkup",
-    status: "Active",
-    color: "bg-violet-100 text-violet-700",
-  },
-  {
-    name: "Liam Anderson",
-    id: "PT-10481",
-    age: "51",
-    condition: "Cardiology",
-    status: "Active",
-    color: "bg-blue-100 text-blue-700",
-  },
-  {
-    name: "Emma Thompson",
-    id: "PT-10480",
-    age: "28",
-    condition: "Dermatology",
-    status: "Follow-up",
-    color: "bg-amber-100 text-amber-700",
-  },
-  {
-    name: "Noah Williams",
-    id: "PT-10479",
-    age: "46",
-    condition: "Orthopedics",
-    status: "Active",
-    color: "bg-emerald-100 text-emerald-700",
-  },
-];

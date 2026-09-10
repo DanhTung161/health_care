@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { BarChart3, CalendarDays, ChevronLeft, ChevronRight, CreditCard, Grid2X2, LogOut, Settings, Stethoscope, Tags, UserRound, Users, X } from "lucide-react";
+import { BarChart3, CalendarDays, ChevronLeft, ChevronRight, CreditCard, Grid2X2, LogOut, Stethoscope, Tags, UserRound, Users, X } from "lucide-react";
 import { useAdminSidebar } from "@/context/AdminSidebarContext";
 import { allowedRoutePrefixes, roleLandingPage, type Role } from "@/lib/roles";
 
@@ -86,10 +86,6 @@ export default function AdminSidebar({ role }: { role: Role }) {
     }} title={isCollapsed ? label : undefined} className={`flex items-center gap-3 rounded-xl px-3 py-3 text-[14px] font-medium transition-all duration-300 ${isCollapsed ? "md:justify-center" : ""} ${active ? "bg-blue-600 text-white shadow-md shadow-blue-200" : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"}`}><Icon className="h-[19px] w-[19px] shrink-0" /> <span className={isCollapsed ? "md:hidden" : ""}>{label}</span></Link>; })}
       </nav>
       <div className="mt-auto space-y-1 border-t border-slate-100 pt-5">
-        {role === "ADMIN" && <Link href="/settings" onClick={(e) => {
-      e.stopPropagation();
-      closeMobile();
-    }} title={isCollapsed ? "Settings" : undefined} className={`flex items-center gap-3 rounded-xl px-3 py-3 text-[14px] font-medium text-slate-500 transition-all duration-300 hover:bg-slate-50 hover:text-slate-900 ${isCollapsed ? "md:justify-center" : ""}`}><Settings className="h-[19px] w-[19px] shrink-0" /><span className={isCollapsed ? "md:hidden" : ""}>Settings</span></Link>}
         <button type="button" onClick={(e) => {
       e.stopPropagation();
       handleLogout();

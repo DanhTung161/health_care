@@ -9,6 +9,10 @@ import User from "@/models/User";
 const BCRYPT_SALT_ROUNDS = 10;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+function escapeRegex(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 interface CreateDoctorRequest {
   name: string;
   email: string;
@@ -67,12 +71,30 @@ function isDuplicateKeyError(error: unknown): boolean {
 export async function GET(request: NextRequest) {
   const authorization = await authorizeAdmin(request);
   if (!authorization.ok) return authorizationError(authorization.status);
+
+  const { searchParams } = new URL(request.url);
+  const search = (searchParams.get("search") ?? "").trim();
+  const limitValue = searchParams.get("limit");
+  if (search.length > 200) {
+    return NextResponse.json({ success: false, error: "Search must be 200 characters or fewer" }, { status: 400 });
+  }
+  if (limitValue !== null && (!/^\d+$/.test(limitValue) || Number(limitValue) < 1 || Number(limitValue) > 100)) {
+    return NextResponse.json({ success: false, error: "Limit must be a positive integer up to 100" }, { status: 400 });
+  }
+
   try {
     await connectDB();
-    const doctors = await User.find({ role: "DOCTOR" })
+    const query: Record<string, unknown> = { role: "DOCTOR" };
+    if (search) {
+      const expression = { $regex: escapeRegex(search), $options: "i" };
+      query.$or = [{ name: expression }, { email: expression }, { phone: expression }];
+    }
+    const doctorsQuery = User.find(query)
       .select("name email phone specialtyId isActive createdAt updatedAt updatedBy")
       .populate("specialtyId", "name")
       .sort({ name: 1 });
+    if (limitValue !== null) doctorsQuery.limit(Number(limitValue));
+    const doctors = await doctorsQuery;
     return NextResponse.json({ success: true, data: doctors });
   } catch {
     return NextResponse.json({ success: false, error: "Unable to load doctors" }, { status: 500 });

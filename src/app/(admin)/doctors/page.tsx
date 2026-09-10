@@ -105,30 +105,6 @@ export default async function Doctors() {
           </table>
         </div>
       </Card>
-      <Card className="mt-5">
-        <h3 className="mb-4 font-bold">Department capacity</h3>
-        <div className="space-y-5">
-          {[
-            ["Cardiology", "85%", "bg-blue-500"],
-            ["Neurology", "72%", "bg-emerald-500"],
-            ["Dermatology", "64%", "bg-amber-500"],
-            ["Orthopedics", "91%", "bg-violet-500"],
-          ].map(([label, value, color]) => (
-            <div key={label}>
-              <div className="mb-2 flex justify-between text-sm">
-                <span className="font-medium text-slate-700">{label}</span>
-                <span className="text-slate-500">{value}</span>
-              </div>
-              <div className="h-2 rounded-full bg-slate-100">
-                <div
-                  className={`h-2 rounded-full ${color}`}
-                  style={{ width: value }}
-                />
-              </div>
-            </div>
-          ))}
-        </div>
-      </Card>
     </div>
   );
 }

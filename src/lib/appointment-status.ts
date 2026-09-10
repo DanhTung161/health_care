@@ -8,6 +8,9 @@ export const APPOINTMENT_STATUSES = [
   "CANCELLED",
 ] as const;
 
+export const PENDING_APPOINTMENT_STATUS = APPOINTMENT_STATUSES[0];
+export const COMPLETED_APPOINTMENT_STATUS = APPOINTMENT_STATUSES[3];
+
 export type AppointmentStatus = (typeof APPOINTMENT_STATUSES)[number];
 
 const allowedTransitions: Record<AppointmentStatus, AppointmentStatus[]> = {

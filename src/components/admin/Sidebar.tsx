@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { BarChart3, CalendarDays, ChevronLeft, ChevronRight, CreditCard, Grid2X2, LogOut, Settings, Stethoscope, UserRound, Users, X } from "lucide-react";
+import { BarChart3, CalendarDays, ChevronLeft, ChevronRight, CreditCard, Grid2X2, LogOut, Settings, Stethoscope, Tags, UserRound, Users, X } from "lucide-react";
 import { useAdminSidebar } from "@/context/AdminSidebarContext";
 import { allowedRoutePrefixes, roleLandingPage, type Role } from "@/lib/roles";
 
@@ -14,6 +14,7 @@ const items = [
   { label: "Billing", href: "/billing", icon: CreditCard },
   { label: "Analytics", href: "/analytics", icon: BarChart3 },
   { label: "Users", href: "/users", icon: UserRound },
+  { label: "Specialties", href: "/specialties", icon: Tags },
 ];
 
 function canSeeNavigationItem(role: Role, href: string): boolean {

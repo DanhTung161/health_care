@@ -94,7 +94,7 @@ export async function GET(request: NextRequest) {
     const page = Math.min(pageResult.value, totalPages);
     const patients = await Patient.find(query)
       .select(
-        "fullName phone identityCard gender dateOfBirth address deletedAt createdAt updatedAt",
+        "fullName phone identityCard gender dateOfBirth address deletedAt createdAt updatedAt updatedBy",
       )
       .sort({ [sortBy]: sortOrder === "asc" ? 1 : -1 })
       .skip((page - 1) * limitResult.value)

@@ -85,7 +85,9 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
 
   try {
     await connectDB();
-    const user = await User.findById(id).select("name email role phone isActive createdAt updatedAt");
+    const user = await User.findById(id).select(
+      "name email role phone isActive createdAt updatedAt updatedBy",
+    );
     if (!user) return NextResponse.json({ success: false, error: "User not found" }, { status: 404 });
     return NextResponse.json({ success: true, data: user });
   } catch {
@@ -117,12 +119,24 @@ export async function PUT(request: NextRequest, { params }: RouteContext) {
     if (update.password) update.password = await bcrypt.hash(update.password, BCRYPT_SALT_ROUNDS);
     else delete update.password;
 
-    const updatedUser = await User.findByIdAndUpdate(id, update, { new: true, runValidators: true })
-      .select("name email role phone isActive");
+    const updatedUser = await User.findByIdAndUpdate(
+      id,
+      { ...update, updatedBy: authorization.user.id },
+      { new: true, runValidators: true },
+    ).select("name email role phone isActive updatedAt updatedBy");
     if (!updatedUser) return NextResponse.json({ success: false, error: "User not found" }, { status: 404 });
     return NextResponse.json({
       success: true,
-      data: { _id: updatedUser._id.toString(), name: updatedUser.name, email: updatedUser.email, role: updatedUser.role, phone: updatedUser.phone, isActive: updatedUser.isActive },
+      data: {
+        _id: updatedUser._id.toString(),
+        name: updatedUser.name,
+        email: updatedUser.email,
+        role: updatedUser.role,
+        phone: updatedUser.phone,
+        isActive: updatedUser.isActive,
+        updatedAt: updatedUser.updatedAt,
+        updatedBy: updatedUser.updatedBy?.toString(),
+      },
     });
   } catch (error) {
     if (isDuplicateKeyError(error)) return NextResponse.json({ success: false, error: "An account with this email already exists" }, { status: 409 });

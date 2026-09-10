@@ -92,7 +92,7 @@ export async function GET(request: NextRequest) {
 
     await connectDB();
     const users = await User.find({})
-      .select("name email role phone isActive createdAt updatedAt")
+      .select("name email role phone isActive createdAt updatedAt updatedBy")
       .sort({ createdAt: -1 });
 
     return NextResponse.json({ success: true, data: users });

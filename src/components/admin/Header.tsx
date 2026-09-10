@@ -13,6 +13,7 @@ const titles: Record<string, [string, string]> = {
   billing: ["Billing", "Track invoices, payments and revenue"],
   analytics: ["Analytics", "Insights to help your clinic perform better"],
   users: ["Users", "Manage accounts and access permissions"],
+  specialties: ["Specialties", "Manage clinical specialties for doctors"],
   settings: ["Settings", "Manage your account and workspace preferences"],
 };
 

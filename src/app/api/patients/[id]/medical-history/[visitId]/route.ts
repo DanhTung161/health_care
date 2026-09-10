@@ -86,7 +86,7 @@ export async function PUT(request: NextRequest, { params }: RouteContext) {
         patientId: id,
         createdAt: { $gte: editCutoff },
       },
-      parsed.data,
+      { ...parsed.data, updatedBy: user.id },
       { new: true, runValidators: true },
     ).populate("doctorId", "name role");
 

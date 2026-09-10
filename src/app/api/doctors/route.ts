@@ -14,7 +14,7 @@ interface CreateDoctorRequest {
   email: string;
   password: string;
   phone?: string;
-  specialtyId?: string;
+  specialtyId: string;
   isActive?: boolean;
 }
 
@@ -44,8 +44,8 @@ function parseCreateDoctorRequest(value: unknown): { data: CreateDoctorRequest }
   if (phone && phone.length > 30) return { error: "Phone number must be 30 characters or fewer" };
 
   if ("specialtyId" in body && typeof body.specialtyId !== "string") return { error: "Specialty is invalid" };
-  const specialtyId = typeof body.specialtyId === "string" ? body.specialtyId.trim() : undefined;
-  if (specialtyId && !mongoose.isValidObjectId(specialtyId)) return { error: "Specialty is invalid" };
+  const specialtyId = typeof body.specialtyId === "string" ? body.specialtyId.trim() : "";
+  if (!specialtyId || !mongoose.isValidObjectId(specialtyId)) return { error: "A valid specialty is required" };
   if ("isActive" in body && typeof body.isActive !== "boolean") return { error: "Account status must be active or inactive" };
 
   return {
@@ -54,7 +54,7 @@ function parseCreateDoctorRequest(value: unknown): { data: CreateDoctorRequest }
       email,
       password,
       ...(phone ? { phone } : {}),
-      ...(specialtyId ? { specialtyId } : {}),
+      specialtyId,
       ...(typeof body.isActive === "boolean" ? { isActive: body.isActive } : {}),
     },
   };
@@ -70,7 +70,7 @@ export async function GET(request: NextRequest) {
   try {
     await connectDB();
     const doctors = await User.find({ role: "DOCTOR" })
-      .select("name email phone specialtyId isActive createdAt updatedAt")
+      .select("name email phone specialtyId isActive createdAt updatedAt updatedBy")
       .populate("specialtyId", "name")
       .sort({ name: 1 });
     return NextResponse.json({ success: true, data: doctors });
@@ -94,7 +94,7 @@ export async function POST(request: NextRequest) {
     if (await User.exists({ email: parsed.data.email })) {
       return NextResponse.json({ success: false, error: "An account with this email already exists" }, { status: 409 });
     }
-    if (parsed.data.specialtyId && !(await Specialty.exists({ _id: parsed.data.specialtyId }))) {
+    if (!(await Specialty.exists({ _id: parsed.data.specialtyId }))) {
       return NextResponse.json({ success: false, error: "Specialty not found" }, { status: 404 });
     }
     const doctor = await User.create({

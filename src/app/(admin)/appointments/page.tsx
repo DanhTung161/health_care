@@ -1,20 +1,18 @@
-import { Badge, Card, PageIntro } from "@/components/admin/AdminUI";
+import { Card, PageIntro } from "@/components/admin/AdminUI";
+import AppointmentViews, {
+  type AppointmentViewItem,
+} from "@/components/admin/AppointmentViews";
+import CreateAppointmentForm, {
+  type AppointmentDoctorOption,
+  type AppointmentPatientOption,
+} from "@/components/admin/CreateAppointmentForm";
+import { getCurrentUser } from "@/lib/auth";
 import connectDB from "@/lib/db";
-import Appointment, { IAppointment } from "@/models/Appointment";
-import { IPatient } from "@/models/Patient";
-import { IUser } from "@/models/User";
+import Appointment from "@/models/Appointment";
+import Patient from "@/models/Patient";
+import User from "@/models/User";
 
-type AppointmentListItem = Omit<
-  Pick<IAppointment, "appointmentDate" | "timeSlot" | "status" | "reason">,
-  "appointmentDate"
-> & {
-  _id: string;
-  appointmentDate: string;
-  patientId: Pick<IPatient, "fullName" | "phone"> | null;
-  doctorId: Pick<IUser, "name"> | null;
-};
-
-async function getAppointments(): Promise<AppointmentListItem[]> {
+async function getAppointments(): Promise<AppointmentViewItem[]> {
   await connectDB();
   const appointments = await Appointment.find({})
     .populate("patientId", "fullName phone")
@@ -22,29 +20,49 @@ async function getAppointments(): Promise<AppointmentListItem[]> {
     .sort({ appointmentDate: -1 })
     .lean();
 
-  return JSON.parse(JSON.stringify(appointments)) as AppointmentListItem[];
+  return JSON.parse(JSON.stringify(appointments)) as AppointmentViewItem[];
 }
 
-function formatAppointmentDate(appointmentDate: string): string {
-  const date = new Date(appointmentDate);
+async function getAppointmentPatients(): Promise<AppointmentPatientOption[]> {
+  await connectDB();
+  const patients = await Patient.find({ deletedAt: null })
+    .select("fullName phone")
+    .sort({ fullName: 1 })
+    .lean();
 
-  if (Number.isNaN(date.getTime())) {
-    return "—";
-  }
+  return JSON.parse(JSON.stringify(patients)) as AppointmentPatientOption[];
+}
 
-  return date.toLocaleDateString("en-US", {
-    month: "short",
-    day: "2-digit",
-    year: "numeric",
-  });
+async function getAppointmentDoctors(): Promise<AppointmentDoctorOption[]> {
+  await connectDB();
+  const doctors = await User.find({ role: "DOCTOR", isActive: true })
+    .select("name specialtyId")
+    .populate("specialtyId", "name")
+    .sort({ name: 1 })
+    .lean();
+
+  return JSON.parse(JSON.stringify(doctors)) as AppointmentDoctorOption[];
 }
 
 export default async function Appointments() {
-  const appointments = await getAppointments();
+  const currentUser = await getCurrentUser();
+  const canBook = currentUser?.role === "ADMIN" || currentUser?.role === "STAFF";
+  const [appointments, patients, doctors] = await Promise.all([
+    getAppointments(),
+    canBook ? getAppointmentPatients() : Promise.resolve([]),
+    canBook ? getAppointmentDoctors() : Promise.resolve([]),
+  ]);
 
   return (
     <div className="mx-auto max-w-[1400px]">
-      <PageIntro title="Appointments" action="Schedule appointment" />
+      <PageIntro
+        title="Appointments"
+        actionSlot={
+          canBook ? (
+            <CreateAppointmentForm patients={patients} doctors={doctors} />
+          ) : undefined
+        }
+      />
       <div className="mb-5 grid gap-4 sm:grid-cols-3">
         <Card>
           <p className="text-sm text-slate-500">Total appointments</p>
@@ -53,10 +71,7 @@ export default async function Appointments() {
         <Card>
           <p className="text-sm text-slate-500">Confirmed</p>
           <p className="mt-2 text-2xl font-bold text-emerald-600">
-            {
-              appointments.filter((item) => item.status === "CONFIRMED")
-                .length
-            }
+            {appointments.filter((item) => item.status === "CONFIRMED").length}
           </p>
         </Card>
         <Card>
@@ -66,40 +81,13 @@ export default async function Appointments() {
           </p>
         </Card>
       </div>
-      <Card>
-        <div className="mb-5 flex items-center justify-between">
-          <h3 className="font-bold">Appointment schedule</h3>
-          <button className="rounded-lg border border-slate-200 px-3 py-2 text-xs text-slate-600">
-            September 4, 2026 ▾
-          </button>
-        </div>
-        <div className="space-y-2">
-          {appointments?.map((appointment) => (
-            <div
-              key={appointment._id}
-              className="grid items-center gap-4 rounded-xl border border-slate-100 p-4 md:grid-cols-[100px_1.2fr_1.2fr_1.5fr_100px]"
-            >
-              <span className="text-sm font-semibold text-blue-600">
-                {formatAppointmentDate(appointment.appointmentDate)} · {appointment.timeSlot}
-              </span>
-              <span className="font-semibold text-slate-800">
-                {appointment.patientId?.fullName ?? "Unknown patient"}
-              </span>
-              <span className="text-sm text-slate-500">
-                {appointment.doctorId?.name ?? "Unknown doctor"}
-              </span>
-              <span className="text-sm text-slate-500">
-                {appointment.reason ?? "—"}
-              </span>
-              <Badge
-                tone={appointment.status === "CONFIRMED" ? "green" : "amber"}
-              >
-                {appointment.status}
-              </Badge>
-            </div>
-          ))}
-        </div>
-      </Card>
+      <AppointmentViews
+        appointments={appointments}
+        doctors={doctors}
+        canReschedule={canBook}
+        currentRole={currentUser?.role}
+        currentUserId={currentUser?.id}
+      />
     </div>
   );
 }

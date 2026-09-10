@@ -50,8 +50,8 @@ function DoctorFields({
       </label>
       <label className="flex flex-col gap-2 text-sm font-medium text-slate-700">
         Specialty
-        <select name="specialtyId" defaultValue={doctor?.specialtyId?._id ?? ""} className={inputClassName}>
-          <option value="">Unassigned</option>
+        <select name="specialtyId" required defaultValue={doctor?.specialtyId?._id ?? ""} className={inputClassName}>
+          <option value="" disabled>Select a specialty</option>
           {specialties.map((specialty) => <option key={specialty._id} value={specialty._id}>{specialty.name}</option>)}
         </select>
       </label>

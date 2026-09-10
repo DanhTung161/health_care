@@ -13,6 +13,7 @@ export interface IMedicalVisit extends Document {
     frequency?: string;
   }[];
   notes?: string;
+  updatedBy?: mongoose.Types.ObjectId;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -48,6 +49,7 @@ const MedicalVisitSchema = new Schema<IMedicalVisit>(
     symptoms: { type: String },
     prescription: { type: [PrescriptionItemSchema], default: [] },
     notes: { type: String },
+    updatedBy: { type: Schema.Types.ObjectId, ref: "User" },
   },
   { timestamps: true },
 );

@@ -85,11 +85,14 @@ export async function PUT(request: NextRequest, { params }: RouteContext) {
 
   try {
     await connectDB();
-    const patient = await Patient.findByIdAndUpdate(id, parsed.data, {
+    const patient = await Patient.findByIdAndUpdate(id, {
+      ...parsed.data,
+      updatedBy: authorization.user.id,
+    }, {
       new: true,
       runValidators: true,
     }).select(
-      "fullName phone identityCard gender dateOfBirth address deletedAt createdAt updatedAt",
+      "fullName phone identityCard gender dateOfBirth address deletedAt createdAt updatedAt updatedBy",
     );
     if (!patient) {
       return NextResponse.json(
@@ -123,10 +126,10 @@ export async function DELETE(request: NextRequest, { params }: RouteContext) {
     await connectDB();
     const patient = await Patient.findByIdAndUpdate(
       id,
-      { deletedAt: new Date() },
+      { deletedAt: new Date(), updatedBy: authorization.user.id },
       { new: true, runValidators: true },
     ).select(
-      "fullName phone identityCard gender dateOfBirth address deletedAt createdAt updatedAt",
+      "fullName phone identityCard gender dateOfBirth address deletedAt createdAt updatedAt updatedBy",
     );
     if (!patient) {
       return NextResponse.json(
@@ -181,10 +184,10 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
     await connectDB();
     const patient = await Patient.findByIdAndUpdate(
       id,
-      { deletedAt: null },
+      { deletedAt: null, updatedBy: authorization.user.id },
       { new: true, runValidators: true },
     ).select(
-      "fullName phone identityCard gender dateOfBirth address deletedAt createdAt updatedAt",
+      "fullName phone identityCard gender dateOfBirth address deletedAt createdAt updatedAt updatedBy",
     );
     if (!patient) {
       return NextResponse.json(

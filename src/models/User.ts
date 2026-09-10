@@ -1,5 +1,6 @@
 import mongoose, { Schema, Document, models, model } from 'mongoose';
 import { USER_ROLES, type Role } from '@/lib/roles';
+import '@/models/Specialty';
 
 export interface IUser extends Document {
   name: string;
@@ -16,6 +17,9 @@ export interface IUser extends Document {
     maxPatientsPerSlot: number;
   }[];
   isActive: boolean;
+  updatedBy?: mongoose.Types.ObjectId;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 const UserSchema = new Schema<IUser>({
@@ -32,7 +36,8 @@ const UserSchema = new Schema<IUser>({
     endTime: { type: String },
     maxPatientsPerSlot: { type: Number, default: 4 }
   }],
-  isActive: { type: Boolean, default: true }
+  isActive: { type: Boolean, default: true },
+  updatedBy: { type: Schema.Types.ObjectId, ref: 'User' }
 }, { timestamps: true });
 
 export default models.User || model<IUser>('User', UserSchema);

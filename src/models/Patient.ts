@@ -22,7 +22,10 @@ export interface IPatient extends Document {
   dateOfBirth?: Date;
   address?: string;
   deletedAt: Date | null;
+  updatedBy?: mongoose.Types.ObjectId;
   medicalRecords: IMedicalRecord[];
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 const MedicalRecordSchema = new Schema<IMedicalRecord>({
@@ -47,6 +50,7 @@ const PatientSchema = new Schema<IPatient>({
   dateOfBirth: { type: Date },
   address: { type: String },
   deletedAt: { type: Date, default: null },
+  updatedBy: { type: Schema.Types.ObjectId, ref: 'User' },
   medicalRecords: [MedicalRecordSchema]
 }, { timestamps: true });
 

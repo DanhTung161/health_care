@@ -17,7 +17,7 @@ interface UpdateDoctorRequest {
   email?: string;
   password?: string;
   phone?: string;
-  specialtyId?: string | null;
+  specialtyId?: string;
   isActive?: boolean;
 }
 
@@ -63,8 +63,8 @@ function parseUpdateDoctorRequest(value: unknown): { data: UpdateDoctorRequest }
   if ("specialtyId" in body) {
     if (typeof body.specialtyId !== "string") return { error: "Specialty is invalid" };
     const specialtyId = body.specialtyId.trim();
-    if (specialtyId && !mongoose.isValidObjectId(specialtyId)) return { error: "Specialty is invalid" };
-    data.specialtyId = specialtyId || null;
+    if (!specialtyId || !mongoose.isValidObjectId(specialtyId)) return { error: "A valid specialty is required" };
+    data.specialtyId = specialtyId;
   }
   if ("isActive" in body) {
     if (typeof body.isActive !== "boolean") return { error: "Account status must be active or inactive" };
@@ -87,7 +87,7 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
   try {
     await connectDB();
     const doctor = await User.findOne({ _id: id, role: "DOCTOR" })
-      .select("name email phone specialtyId isActive createdAt updatedAt")
+      .select("name email phone specialtyId isActive createdAt updatedAt updatedBy")
       .populate("specialtyId", "name");
     if (!doctor) return NextResponse.json({ success: false, error: "Doctor not found" }, { status: 404 });
     return NextResponse.json({ success: true, data: doctor });
@@ -124,10 +124,10 @@ export async function PUT(request: NextRequest, { params }: RouteContext) {
 
     const doctor = await User.findOneAndUpdate(
       { _id: id, role: "DOCTOR" },
-      update,
+      { ...update, updatedBy: authorization.user.id },
       { new: true, runValidators: true },
     )
-      .select("name email phone specialtyId isActive")
+      .select("name email phone specialtyId isActive updatedAt updatedBy")
       .populate("specialtyId", "name");
     if (!doctor) return NextResponse.json({ success: false, error: "Doctor not found" }, { status: 404 });
     return NextResponse.json({ success: true, data: doctor });

@@ -136,6 +136,14 @@ export function parseServiceOrderInput(
       ),
     };
   }
+  if (body.category === "CONSULTATION") {
+    return {
+      error: new BillingServiceOrderError(
+        "The consultation fee is added automatically and cannot be added as a clinical order",
+        400,
+      ),
+    };
+  }
 
   const description =
     typeof body.description === "string" ? body.description.trim() : "";

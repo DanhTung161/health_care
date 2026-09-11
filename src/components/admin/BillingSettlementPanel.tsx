@@ -6,6 +6,10 @@ type Method = "CASH" | "BANK_TRANSFER" | "CREDIT_CARD";
 
 export interface SettlementBillingData {
   appointment: { id: string; status: string } | null;
+  insurance: {
+    plan: string;
+    verificationStatus: string;
+  };
   refundTransactions: Array<{
     id: string;
     amount: number;
@@ -112,6 +116,9 @@ export default function BillingSettlementPanel({
 
   const completed = billing.appointment?.status === "COMPLETED";
   const closed = billing.totals.billingStatus === "CLOSED";
+  const insuranceFinalized =
+    billing.insurance.plan === "NONE" ||
+    billing.insurance.verificationStatus === "VERIFIED";
 
   return (
     <section className="rounded-xl border border-slate-100 bg-white p-5 shadow-sm">
@@ -127,6 +134,7 @@ export default function BillingSettlementPanel({
       </dl>
       {!completed && !closed && <p className="mt-4 text-sm text-amber-700">The visit must be completed before reconciliation can be finalized.</p>}
       {completed && billing.totals.balanceDue > 0 && !closed && <p className="mt-4 text-sm text-amber-700">Collect the remaining balance before closing this invoice.</p>}
+      {completed && !insuranceFinalized && !closed && <p className="mt-4 text-sm text-amber-700">Verify the insurance decision before closing this invoice.</p>}
       {completed && billing.totals.refundDue > 0 && !closed && (
         <form onSubmit={refund} className="mt-4 space-y-3 border-t border-slate-100 pt-4">
           <p className="text-sm font-semibold text-slate-800">Process refund</p>
@@ -140,7 +148,7 @@ export default function BillingSettlementPanel({
           <button disabled={saving} className="w-full rounded-xl bg-amber-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60">Process refund</button>
         </form>
       )}
-      {completed && billing.totals.balanceDue === 0 && billing.totals.refundDue === 0 && !closed && (
+      {completed && insuranceFinalized && billing.totals.balanceDue === 0 && billing.totals.refundDue === 0 && !closed && (
         <button type="button" disabled={saving} onClick={() => void closeInvoice()} className="mt-4 w-full rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60">Close invoice</button>
       )}
       {billing.refundTransactions.length > 0 && (

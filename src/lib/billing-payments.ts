@@ -218,25 +218,20 @@ function existingPaymentResult(
   return paymentResult(billing, existing, true);
 }
 
-async function loadPayableBilling(
+interface BillingPaymentContext {
+  billing: IBilling;
+  appointmentStatus: string;
+}
+
+async function loadBillingPaymentContext(
   appointmentId: mongoose.Types.ObjectId,
   session: ClientSession,
-): Promise<IBilling> {
+): Promise<BillingPaymentContext> {
   const appointment = await Appointment.findById(appointmentId)
     .select("status")
     .session(session);
   if (!appointment) {
     throw new BillingPaymentError("Appointment not found", 404);
-  }
-  if (
-    !PAYABLE_APPOINTMENT_STATUSES.includes(
-      appointment.status as (typeof PAYABLE_APPOINTMENT_STATUSES)[number],
-    )
-  ) {
-    throw new BillingPaymentError(
-      `Payments cannot be collected for a ${appointment.status} appointment`,
-      409,
-    );
   }
 
   const billing = await Billing.findOne({ appointmentId }).session(session);
@@ -246,13 +241,29 @@ async function loadPayableBilling(
       404,
     );
   }
+  return { billing, appointmentStatus: appointment.status };
+}
+
+function assertPaymentCanBeCollected(
+  billing: IBilling,
+  appointmentStatus: string,
+): void {
+  if (
+    !PAYABLE_APPOINTMENT_STATUSES.includes(
+      appointmentStatus as (typeof PAYABLE_APPOINTMENT_STATUSES)[number],
+    )
+  ) {
+    throw new BillingPaymentError(
+      `Payments cannot be collected for a ${appointmentStatus} appointment`,
+      409,
+    );
+  }
   if (billing.billingStatus === "CLOSED") {
     throw new BillingPaymentError(
       "Closed invoices are financially immutable",
       409,
     );
   }
-  return billing;
 }
 
 function applyCalculation(billing: IBilling): void {
@@ -295,9 +306,13 @@ export async function collectBillingPayment(
 
   try {
     const result = await session.withTransaction(async () => {
-      const billing = await loadPayableBilling(appointmentId, session);
+      const { billing, appointmentStatus } = await loadBillingPaymentContext(
+        appointmentId,
+        session,
+      );
       const replay = existingPaymentResult(billing, idempotencyKey, input);
       if (replay) return replay;
+      assertPaymentCanBeCollected(billing, appointmentStatus);
 
       applyCalculation(billing);
       if (input.amount > billing.balanceDue) {

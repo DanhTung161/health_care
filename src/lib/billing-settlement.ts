@@ -1,6 +1,7 @@
 import "server-only";
 
 import mongoose, { type ClientSession } from "mongoose";
+import { COMPLETED_APPOINTMENT_STATUS } from "@/lib/appointment-status";
 import { prepareBillingPersistence } from "@/lib/billing";
 import {
   BillingCalculationError,
@@ -117,7 +118,7 @@ async function loadCompletedBilling(
   if (!appointment) {
     throw new BillingSettlementError("Appointment not found", 404);
   }
-  if (appointment.status !== "COMPLETED") {
+  if (appointment.status !== COMPLETED_APPOINTMENT_STATUS) {
     throw new BillingSettlementError(
       "Billing settlement requires a completed appointment",
       409,
@@ -293,6 +294,15 @@ export async function closeBilling(
       if (billing.refundDue > 0) {
         throw new BillingSettlementError(
           `Invoice has ${billing.refundDue} VND requiring refund`,
+          409,
+        );
+      }
+      if (
+        billing.insurancePlan !== "NONE" &&
+        billing.insuranceVerificationStatus !== "VERIFIED"
+      ) {
+        throw new BillingSettlementError(
+          "Insurance must be verified before this invoice can be closed",
           409,
         );
       }

@@ -246,6 +246,12 @@ async function loadPayableBilling(
       404,
     );
   }
+  if (billing.billingStatus === "CLOSED") {
+    throw new BillingPaymentError(
+      "Closed invoices are financially immutable",
+      409,
+    );
+  }
   return billing;
 }
 

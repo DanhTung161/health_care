@@ -41,6 +41,14 @@ type DetailRecord = {
     collectedBy: IdName | null;
     collectedAt: Date;
   }>;
+  refundTransactions: Array<{
+    _id: mongoose.Types.ObjectId;
+    amount: number;
+    method: string;
+    reason: string;
+    processedBy: IdName | null;
+    processedAt: Date;
+  }>;
   insurancePlan: string;
   grossSubtotal: number;
   coveredSubtotal: number;
@@ -53,7 +61,11 @@ type DetailRecord = {
   totalPatientPayable: number;
   amountPaid: number;
   balanceDue: number;
+  refundDue: number;
   paymentStatus: string;
+  billingStatus: string;
+  closedBy?: IdName | null;
+  closedAt?: Date;
   insuranceVerificationStatus: string;
   insuranceNote?: string;
   verifiedBy?: IdName | null;
@@ -98,7 +110,9 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
         populate: { path: "doctorId", select: "name" },
       })
       .populate({ path: "paymentTransactions.collectedBy", select: "name" })
+      .populate({ path: "refundTransactions.processedBy", select: "name" })
       .populate({ path: "verifiedBy", select: "name" })
+      .populate({ path: "closedBy", select: "name" })
       .lean()) as unknown as DetailRecord | null;
     if (!billing) {
       return NextResponse.json(
@@ -157,6 +171,21 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
             : null,
           collectedAt: transaction.collectedAt.toISOString(),
         })),
+        refundTransactions: (billing.refundTransactions ?? []).map(
+          (transaction) => ({
+            id: transaction._id.toString(),
+            amount: transaction.amount,
+            method: transaction.method,
+            reason: transaction.reason,
+            processedBy: transaction.processedBy
+              ? {
+                  id: transaction.processedBy._id.toString(),
+                  name: transaction.processedBy.name,
+                }
+              : null,
+            processedAt: transaction.processedAt.toISOString(),
+          }),
+        ),
         insurance: {
           plan: billing.insurancePlan,
           grossSubtotal: billing.grossSubtotal,
@@ -178,7 +207,13 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
           totalPatientPayable: billing.totalPatientPayable,
           amountPaid: billing.amountPaid,
           balanceDue: billing.balanceDue,
+          refundDue: billing.refundDue ?? 0,
           paymentStatus: billing.paymentStatus,
+          billingStatus: billing.billingStatus ?? "OPEN",
+          closedBy: billing.closedBy
+            ? { id: billing.closedBy._id.toString(), name: billing.closedBy.name }
+            : null,
+          closedAt: billing.closedAt?.toISOString() ?? null,
         },
       },
     });

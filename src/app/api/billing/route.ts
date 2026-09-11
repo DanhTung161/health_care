@@ -26,7 +26,9 @@ type BillingListRecord = {
   totalPatientPayable: number;
   amountPaid: number;
   balanceDue: number;
+  refundDue: number;
   paymentStatus: string;
+  billingStatus: string;
   insuranceVerificationStatus: string;
   patientId: PopulatedPatient | null;
   appointmentId: PopulatedAppointment | null;
@@ -63,7 +65,9 @@ function serializeRecord(record: BillingListRecord) {
     totalPatientPayable: record.totalPatientPayable,
     amountPaid: record.amountPaid,
     balanceDue: record.balanceDue,
+    refundDue: record.refundDue ?? 0,
     paymentStatus: record.paymentStatus,
+    billingStatus: record.billingStatus ?? "OPEN",
     insuranceVerificationStatus: record.insuranceVerificationStatus,
     patient: record.patientId
       ? {
@@ -138,7 +142,7 @@ export async function GET(request: NextRequest) {
     const page = Math.min(requestedPage, totalPages);
     const records = (await Billing.find(filter)
       .select(
-        "invoiceNo grossSubtotal effectiveInsurancePaid totalPatientPayable amountPaid balanceDue paymentStatus insuranceVerificationStatus patientId appointmentId",
+        "invoiceNo grossSubtotal effectiveInsurancePaid totalPatientPayable amountPaid balanceDue refundDue paymentStatus billingStatus insuranceVerificationStatus patientId appointmentId",
       )
       .populate({ path: "patientId", select: "fullName phone" })
       .populate({

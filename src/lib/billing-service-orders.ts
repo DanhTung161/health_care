@@ -257,6 +257,12 @@ async function loadOwnedBilling(
       409,
     );
   }
+  if (billing.billingStatus === "CLOSED") {
+    throw new BillingServiceOrderError(
+      "Closed invoices are financially immutable",
+      409,
+    );
+  }
   return billing;
 }
 

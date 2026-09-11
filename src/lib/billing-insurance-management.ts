@@ -209,6 +209,12 @@ export async function updateBillingInsurance(
           404,
         );
       }
+      if (billing.billingStatus === "CLOSED") {
+        throw new BillingInsuranceError(
+          "Closed invoices are financially immutable",
+          409,
+        );
+      }
 
       billing.insurancePlan = input.insurancePlan;
       billing.insuranceOverrideEnabled = input.insuranceOverrideEnabled;

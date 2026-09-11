@@ -29,6 +29,10 @@ export const BILLING_PAYMENT_TYPES = ["DEPOSIT", "PAYMENT"] as const;
 
 export type BillingPaymentType = (typeof BILLING_PAYMENT_TYPES)[number];
 
+export const BILLING_STATUSES = ["OPEN", "CLOSED"] as const;
+
+export type BillingStatus = (typeof BILLING_STATUSES)[number];
+
 export const BILLING_LINE_ITEM_CATEGORIES = [
   "CONSULTATION",
   "LAB",
@@ -74,6 +78,16 @@ export interface IBillingPaymentTransaction {
   collectedAt: Date;
 }
 
+export interface IBillingRefundTransaction {
+  _id: mongoose.Types.ObjectId;
+  idempotencyKey: string;
+  amount: number;
+  method: BillingPaymentMethod;
+  reason: string;
+  processedBy: mongoose.Types.ObjectId;
+  processedAt: Date;
+}
+
 export interface IBilling extends Document {
   appointmentId: mongoose.Types.ObjectId;
   patientId: mongoose.Types.ObjectId;
@@ -81,6 +95,7 @@ export interface IBilling extends Document {
   lookupCode: string;
   lineItems: IBillingLineItem[];
   paymentTransactions: IBillingPaymentTransaction[];
+  refundTransactions: IBillingRefundTransaction[];
   subtotal: number;
   insurancePaid: number;
   insurancePlan: InsurancePlan;
@@ -95,7 +110,11 @@ export interface IBilling extends Document {
   totalPatientPayable: number;
   amountPaid: number;
   balanceDue: number;
+  refundDue: number;
   paymentStatus: PaymentStatus;
+  billingStatus: BillingStatus;
+  closedBy?: mongoose.Types.ObjectId;
+  closedAt?: Date;
   insuranceVerificationStatus: InsuranceVerificationStatus;
   insuranceNote?: string;
   verifiedBy?: mongoose.Types.ObjectId;
@@ -207,6 +226,46 @@ const BillingPaymentTransactionSchema = new Schema<IBillingPaymentTransaction>(
   },
 );
 
+const BillingRefundTransactionSchema = new Schema<IBillingRefundTransaction>(
+  {
+    _id: { type: Schema.Types.ObjectId, auto: true },
+    idempotencyKey: {
+      type: String,
+      required: true,
+      trim: true,
+      minlength: 8,
+      maxlength: 128,
+      immutable: true,
+    },
+    amount: { ...integerVnd, min: 1, immutable: true },
+    method: {
+      type: String,
+      enum: BILLING_PAYMENT_METHODS,
+      required: true,
+      immutable: true,
+    },
+    reason: {
+      type: String,
+      required: true,
+      trim: true,
+      maxlength: 500,
+      immutable: true,
+    },
+    processedBy: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+      immutable: true,
+    },
+    processedAt: {
+      type: Date,
+      required: true,
+      default: Date.now,
+      immutable: true,
+    },
+  },
+);
+
 BillingLineItemSchema.pre("validate", function calculateLineItemAmount() {
   const amount = this.quantity * this.unitPrice;
   if (Number.isSafeInteger(amount) && amount >= 0) {
@@ -254,6 +313,17 @@ const BillingSchema = new Schema<IBilling>(
         message: "Payment idempotency keys must be unique",
       },
     },
+    refundTransactions: {
+      type: [BillingRefundTransactionSchema],
+      required: true,
+      default: [],
+      validate: {
+        validator: (transactions: IBillingRefundTransaction[]) =>
+          new Set(transactions.map(({ idempotencyKey }) => idempotencyKey))
+            .size === transactions.length,
+        message: "Refund idempotency keys must be unique",
+      },
+    },
     subtotal: integerVnd,
     insurancePaid: integerVnd,
     insurancePlan: {
@@ -273,12 +343,21 @@ const BillingSchema = new Schema<IBilling>(
     totalPatientPayable: integerVnd,
     amountPaid: integerVnd,
     balanceDue: integerVnd,
+    refundDue: { ...integerVnd, default: 0 },
     paymentStatus: {
       type: String,
       enum: PAYMENT_STATUSES,
       required: true,
       default: "UNPAID",
     },
+    billingStatus: {
+      type: String,
+      enum: BILLING_STATUSES,
+      required: true,
+      default: "OPEN",
+    },
+    closedBy: { type: Schema.Types.ObjectId, ref: "User" },
+    closedAt: { type: Date },
     insuranceVerificationStatus: {
       type: String,
       enum: INSURANCE_VERIFICATION_STATUSES,
@@ -297,6 +376,10 @@ BillingSchema.index(
   { "paymentTransactions.idempotencyKey": 1 },
   { unique: true, sparse: true },
 );
+BillingSchema.index(
+  { "refundTransactions.idempotencyKey": 1 },
+  { unique: true, sparse: true },
+);
 
 const Billing = models.Billing || model<IBilling>("Billing", BillingSchema);
 
@@ -311,12 +394,37 @@ if (
   );
 }
 
+if (
+  !Billing.schema
+    .indexes()
+    .some(([fields]) => fields["refundTransactions.idempotencyKey"] === 1)
+) {
+  Billing.schema.index(
+    { "refundTransactions.idempotencyKey": 1 },
+    { unique: true, sparse: true },
+  );
+}
+
 const cachedBillingFields: Record<string, mongoose.SchemaDefinitionProperty> = {
   paymentTransactions: {
     type: [BillingPaymentTransactionSchema],
     required: true,
     default: [],
   },
+  refundTransactions: {
+    type: [BillingRefundTransactionSchema],
+    required: true,
+    default: [],
+  },
+  refundDue: { ...integerVnd, default: 0 },
+  billingStatus: {
+    type: String,
+    enum: BILLING_STATUSES,
+    required: true,
+    default: "OPEN",
+  },
+  closedBy: { type: Schema.Types.ObjectId, ref: "User" },
+  closedAt: { type: Date },
   insurancePlan: {
     type: String,
     enum: INSURANCE_PLANS,

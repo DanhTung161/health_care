@@ -53,6 +53,7 @@ export interface BillingCalculationResult {
   vatAmount: number;
   totalPatientPayable: number;
   balanceDue: number;
+  refundDue: number;
   paymentStatus: "UNPAID" | "PARTIALLY_PAID" | "PAID";
 }
 
@@ -60,6 +61,7 @@ interface MutableBillingCalculationTarget
   extends Omit<BillingCalculationInput, "lineItems" | "amountPaid"> {
   lineItems: SettlementLineItem[];
   paymentTransactions: PaymentTransactionAmount[];
+  refundTransactions: PaymentTransactionAmount[];
   amountPaid: number;
   subtotal: number;
   insurancePaid: number;
@@ -71,6 +73,7 @@ interface MutableBillingCalculationTarget
   vatAmount: number;
   totalPatientPayable: number;
   balanceDue: number;
+  refundDue: number;
   paymentStatus: "UNPAID" | "PARTIALLY_PAID" | "PAID";
 }
 
@@ -278,15 +281,11 @@ export function calculateBillingAmounts(
     [postInsuranceAmount, vatAmount],
     "Total patient payable",
   );
-  if (input.amountPaid > totalPatientPayable) {
-    throw new BillingCalculationError(
-      "Total patient payable cannot be lower than the amount already paid",
-    );
-  }
-
-  const balanceDue = totalPatientPayable - input.amountPaid;
+  const difference = input.amountPaid - totalPatientPayable;
+  const balanceDue = difference < 0 ? -difference : 0;
+  const refundDue = difference > 0 ? difference : 0;
   const paymentStatus =
-    balanceDue === 0
+    input.amountPaid >= totalPatientPayable
       ? "PAID"
       : input.amountPaid > 0
         ? "PARTIALLY_PAID"
@@ -301,6 +300,7 @@ export function calculateBillingAmounts(
     vatAmount,
     totalPatientPayable,
     balanceDue,
+    refundDue,
     paymentStatus,
   };
 }
@@ -322,6 +322,9 @@ export function recalculateBilling(
   billing.paymentTransactions = Array.isArray(billing.paymentTransactions)
     ? billing.paymentTransactions
     : [];
+  billing.refundTransactions = Array.isArray(billing.refundTransactions)
+    ? billing.refundTransactions
+    : [];
   if (
     billing.paymentTransactions.length === 0 &&
     Number.isSafeInteger(billing.amountPaid) &&
@@ -331,10 +334,18 @@ export function recalculateBilling(
       "Existing aggregate payment must be reconciled before ledger mutations",
     );
   }
-  const amountPaid = checkedSum(
+  const grossCollected = checkedSum(
     billing.paymentTransactions.map((transaction) => transaction.amount),
-    "Amount paid",
+    "Gross collected",
   );
+  const refunds = checkedSum(
+    billing.refundTransactions.map((transaction) => transaction.amount),
+    "Refunds",
+  );
+  if (refunds > grossCollected) {
+    throw new BillingCalculationError("Refunds cannot exceed gross collections");
+  }
+  const amountPaid = grossCollected - refunds;
   billing.amountPaid = amountPaid;
   const result = calculateBillingAmounts({
     lineItems: billing.lineItems,
@@ -351,12 +362,13 @@ export function recalculateBilling(
   billing.vatAmount = result.vatAmount;
   billing.totalPatientPayable = result.totalPatientPayable;
   billing.balanceDue = result.balanceDue;
+  billing.refundDue = result.refundDue;
   billing.paymentStatus = result.paymentStatus;
   allocateLineItemSettlement(
     billing.lineItems,
     result.effectiveInsurancePaid,
     result.vatAmount,
-    amountPaid,
+    Math.min(amountPaid, result.totalPatientPayable),
   );
 
   // Retained for compatibility with the initial Billing foundation.

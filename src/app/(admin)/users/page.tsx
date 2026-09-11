@@ -3,7 +3,7 @@ import CreateUserForm from "@/components/admin/CreateUserForm";
 import UserAccountActions from "@/components/admin/UserAccountActions";
 import { getCurrentUser } from "@/lib/auth";
 import connectDB from "@/lib/db";
-import { roleLandingPage } from "@/lib/roles";
+import { isRole, roleLandingPage, type Role } from "@/lib/roles";
 import User, { IUser } from "@/models/User";
 import { redirect } from "next/navigation";
 
@@ -20,9 +20,15 @@ const roleTone = {
   STAFF: "green",
 } as const;
 
-async function getUsers(): Promise<UserListItem[]> {
+type SearchParams = { [key: string]: string | string[] | undefined };
+
+function first(value: string | string[] | undefined): string {
+  return typeof value === "string" ? value : "";
+}
+
+async function getUsers(role?: Role): Promise<UserListItem[]> {
   await connectDB();
-  const users = await User.find({})
+  const users = await User.find(role ? { role } : {})
     .select("-password")
     .sort({ createdAt: -1 })
     .lean();
@@ -30,8 +36,18 @@ async function getUsers(): Promise<UserListItem[]> {
   return JSON.parse(JSON.stringify(users)) as UserListItem[];
 }
 
-export default async function Users() {
-  const currentUser = await getCurrentUser();
+export default async function Users({
+  searchParams,
+}: {
+  searchParams: Promise<SearchParams>;
+}) {
+  const [params, currentUser] = await Promise.all([
+    searchParams,
+    getCurrentUser(),
+  ]);
+  const requestedRole = first(params.role).trim();
+  const role = isRole(requestedRole) ? requestedRole : undefined;
+
   if (!currentUser) {
     redirect("/login");
   }
@@ -39,7 +55,7 @@ export default async function Users() {
     redirect(`${roleLandingPage[currentUser.role]}?error=unauthorized`);
   }
 
-  const users = await getUsers();
+  const users = await getUsers(role);
 
   return (
     <div className="mx-auto max-w-[1400px]">
@@ -70,9 +86,25 @@ export default async function Users() {
               Assign the right access level to every team member.
             </p>
           </div>
-          <button className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm text-slate-600">
-            Filter by role ▾
-          </button>
+          <form action="/users" className="flex items-center gap-2">
+            <label className="sr-only" htmlFor="user-role-filter">
+              Filter users by role
+            </label>
+            <select
+              id="user-role-filter"
+              name="role"
+              defaultValue={role ?? ""}
+              className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-600 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10"
+            >
+              <option value="">All roles</option>
+              <option value="ADMIN">ADMIN</option>
+              <option value="DOCTOR">DOCTOR</option>
+              <option value="STAFF">STAFF</option>
+            </select>
+            <button className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50">
+              Apply
+            </button>
+          </form>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[860px] text-left text-sm">

@@ -90,8 +90,16 @@ export async function GET(request: NextRequest) {
       return authorizationError(authorization.status);
     }
 
+    const requestedRole = request.nextUrl.searchParams.get("role")?.trim();
+    if (requestedRole && !isRole(requestedRole)) {
+      return NextResponse.json(
+        { success: false, error: "Role filter is invalid" },
+        { status: 400 },
+      );
+    }
+
     await connectDB();
-    const users = await User.find({})
+    const users = await User.find(requestedRole ? { role: requestedRole } : {})
       .select("name email role phone isActive createdAt updatedAt updatedBy")
       .sort({ createdAt: -1 });
 

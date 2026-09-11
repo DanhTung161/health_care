@@ -11,6 +11,10 @@ import {
   isReschedulableAppointmentStatus,
   type AppointmentStatus,
 } from "@/lib/appointment-status";
+import {
+  ensureBillingForAppointment,
+  prepareBillingPersistence,
+} from "@/lib/billing";
 import connectDB from "@/lib/db";
 import Appointment from "@/models/Appointment";
 import "@/models/Patient";
@@ -263,6 +267,71 @@ export async function PUT(req: NextRequest, { params }: RouteContext) {
       return NextResponse.json({
         success: true,
         data: cancelledAppointment.toObject(),
+      });
+    }
+
+    if (requestedStatus === "CONFIRMED") {
+      const actorId = new mongoose.Types.ObjectId(currentUser.id);
+      await prepareBillingPersistence();
+      const session = await mongoose.startSession();
+      let confirmedAppointment: typeof appointment | null = null;
+
+      try {
+        await session.withTransaction(async () => {
+          const update: Record<string, unknown> = {
+            status: "CONFIRMED",
+            updatedBy: actorId,
+          };
+          if (typeof body.reason === "string") {
+            update.reason = body.reason.trim();
+          }
+
+          confirmedAppointment = await Appointment.findOneAndUpdate(
+            { _id: appointment._id, status: currentStatus },
+            { $set: update },
+            {
+              returnDocument: "after",
+              runValidators: true,
+              session,
+            },
+          );
+
+          if (!confirmedAppointment) {
+            throw new Error("APPOINTMENT_TRANSITION_CONFLICT");
+          }
+
+          await ensureBillingForAppointment({
+            appointmentId: appointment._id,
+            patientId: appointment.patientId,
+            actorId,
+            session,
+          });
+        });
+      } catch (error) {
+        if (
+          error instanceof Error &&
+          error.message === "APPOINTMENT_TRANSITION_CONFLICT"
+        ) {
+          return NextResponse.json(
+            {
+              success: false,
+              error: "Appointment status changed before it could be confirmed",
+            },
+            { status: 409 },
+          );
+        }
+        throw error;
+      } finally {
+        await session.endSession();
+      }
+
+      if (!confirmedAppointment) {
+        throw new Error("Confirmed appointment was not returned");
+      }
+
+      return NextResponse.json({
+        success: true,
+        data: confirmedAppointment.toObject(),
       });
     }
 

@@ -9,6 +9,8 @@ type IdName = { _id: mongoose.Types.ObjectId; name: string };
 type DetailRecord = {
   _id: mongoose.Types.ObjectId;
   invoiceNo: string;
+  lookupCode: string;
+  createdAt: Date;
   appointmentId: {
     _id: mongoose.Types.ObjectId;
     appointmentDate: Date;
@@ -110,6 +112,8 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
       data: {
         id: billing._id.toString(),
         invoiceNo: billing.invoiceNo,
+        lookupCode: billing.lookupCode,
+        invoiceDate: billing.createdAt.toISOString(),
         appointment: billing.appointmentId
           ? {
               id: billing.appointmentId._id.toString(),

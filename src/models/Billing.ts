@@ -17,6 +17,18 @@ export const PAYMENT_STATUSES = [
 
 export type PaymentStatus = (typeof PAYMENT_STATUSES)[number];
 
+export const BILLING_PAYMENT_METHODS = [
+  "CASH",
+  "BANK_TRANSFER",
+  "CREDIT_CARD",
+] as const;
+
+export type BillingPaymentMethod = (typeof BILLING_PAYMENT_METHODS)[number];
+
+export const BILLING_PAYMENT_TYPES = ["DEPOSIT", "PAYMENT"] as const;
+
+export type BillingPaymentType = (typeof BILLING_PAYMENT_TYPES)[number];
+
 export const BILLING_LINE_ITEM_CATEGORIES = [
   "CONSULTATION",
   "LAB",
@@ -50,12 +62,25 @@ export interface IBillingLineItem {
   createdAt: Date;
 }
 
+export interface IBillingPaymentTransaction {
+  _id: mongoose.Types.ObjectId;
+  idempotencyKey: string;
+  amount: number;
+  method: BillingPaymentMethod;
+  type: BillingPaymentType;
+  reference?: string;
+  note?: string;
+  collectedBy: mongoose.Types.ObjectId;
+  collectedAt: Date;
+}
+
 export interface IBilling extends Document {
   appointmentId: mongoose.Types.ObjectId;
   patientId: mongoose.Types.ObjectId;
   invoiceNo: string;
   lookupCode: string;
   lineItems: IBillingLineItem[];
+  paymentTransactions: IBillingPaymentTransaction[];
   subtotal: number;
   insurancePaid: number;
   insurancePlan: InsurancePlan;
@@ -127,6 +152,61 @@ const BillingLineItemSchema = new Schema<IBillingLineItem>(
   },
 );
 
+const BillingPaymentTransactionSchema = new Schema<IBillingPaymentTransaction>(
+  {
+    _id: { type: Schema.Types.ObjectId, auto: true },
+    idempotencyKey: {
+      type: String,
+      required: true,
+      trim: true,
+      minlength: 8,
+      maxlength: 128,
+      immutable: true,
+    },
+    amount: {
+      ...integerVnd,
+      min: 1,
+      immutable: true,
+    },
+    method: {
+      type: String,
+      enum: BILLING_PAYMENT_METHODS,
+      required: true,
+      immutable: true,
+    },
+    type: {
+      type: String,
+      enum: BILLING_PAYMENT_TYPES,
+      required: true,
+      immutable: true,
+    },
+    reference: {
+      type: String,
+      trim: true,
+      maxlength: 200,
+      immutable: true,
+    },
+    note: {
+      type: String,
+      trim: true,
+      maxlength: 500,
+      immutable: true,
+    },
+    collectedBy: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+      immutable: true,
+    },
+    collectedAt: {
+      type: Date,
+      required: true,
+      default: Date.now,
+      immutable: true,
+    },
+  },
+);
+
 BillingLineItemSchema.pre("validate", function calculateLineItemAmount() {
   const amount = this.quantity * this.unitPrice;
   if (Number.isSafeInteger(amount) && amount >= 0) {
@@ -161,6 +241,17 @@ const BillingSchema = new Schema<IBilling>(
       validate: {
         validator: (items: IBillingLineItem[]) => items.length > 0,
         message: "A billing record must contain at least one line item",
+      },
+    },
+    paymentTransactions: {
+      type: [BillingPaymentTransactionSchema],
+      required: true,
+      default: [],
+      validate: {
+        validator: (transactions: IBillingPaymentTransaction[]) =>
+          new Set(transactions.map(({ idempotencyKey }) => idempotencyKey))
+            .size === transactions.length,
+        message: "Payment idempotency keys must be unique",
       },
     },
     subtotal: integerVnd,
@@ -202,9 +293,30 @@ const BillingSchema = new Schema<IBilling>(
   { timestamps: true },
 );
 
+BillingSchema.index(
+  { "paymentTransactions.idempotencyKey": 1 },
+  { unique: true, sparse: true },
+);
+
 const Billing = models.Billing || model<IBilling>("Billing", BillingSchema);
 
+if (
+  !Billing.schema
+    .indexes()
+    .some(([fields]) => fields["paymentTransactions.idempotencyKey"] === 1)
+) {
+  Billing.schema.index(
+    { "paymentTransactions.idempotencyKey": 1 },
+    { unique: true, sparse: true },
+  );
+}
+
 const cachedBillingFields: Record<string, mongoose.SchemaDefinitionProperty> = {
+  paymentTransactions: {
+    type: [BillingPaymentTransactionSchema],
+    required: true,
+    default: [],
+  },
   insurancePlan: {
     type: String,
     enum: INSURANCE_PLANS,

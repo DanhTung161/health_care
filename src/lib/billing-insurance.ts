@@ -27,6 +27,15 @@ interface InsuranceLineItem {
   isCoveredByInsurance: boolean;
 }
 
+interface SettlementLineItem extends InsuranceLineItem {
+  paymentStatus: "PENDING_PAYMENT" | "PAID";
+  createdAt: Date;
+}
+
+interface PaymentTransactionAmount {
+  amount: number;
+}
+
 export interface BillingCalculationInput {
   lineItems: InsuranceLineItem[];
   insurancePlan: InsurancePlan;
@@ -47,7 +56,11 @@ export interface BillingCalculationResult {
   paymentStatus: "UNPAID" | "PARTIALLY_PAID" | "PAID";
 }
 
-interface MutableBillingCalculationTarget extends BillingCalculationInput {
+interface MutableBillingCalculationTarget
+  extends Omit<BillingCalculationInput, "lineItems" | "amountPaid"> {
+  lineItems: SettlementLineItem[];
+  paymentTransactions: PaymentTransactionAmount[];
+  amountPaid: number;
   subtotal: number;
   insurancePaid: number;
   grossSubtotal: number;
@@ -96,6 +109,105 @@ function checkedSum(values: number[], label: string): number {
     assertVnd(result, label);
   }
   return result;
+}
+
+function proportionalShares(total: number, weights: number[]): number[] {
+  assertVnd(total, "Allocation total");
+  const weightTotal = checkedSum(weights, "Allocation weight");
+  if (weightTotal === 0) return weights.map(() => 0);
+
+  const denominator = BigInt(weightTotal);
+  const exact = weights.map((weight, index) => {
+    const product = BigInt(total) * BigInt(weight);
+    return {
+      index,
+      amount: Number(product / denominator),
+      remainder: product % denominator,
+    };
+  });
+  const unallocated =
+    total - exact.reduce((sum, share) => sum + share.amount, 0);
+  const remainderOrder = [...exact].sort(
+    (left, right) =>
+      (left.remainder > right.remainder
+        ? -1
+        : left.remainder < right.remainder
+          ? 1
+          : 0) || left.index - right.index,
+  );
+  for (let index = 0; index < unallocated; index += 1) {
+    remainderOrder[index].amount += 1;
+  }
+  return exact
+    .sort((left, right) => left.index - right.index)
+    .map(({ amount }) => amount);
+}
+
+// Insurance is allocated to the oldest eligible line items first. The invoice
+// VAT is then distributed proportionally across each item's remaining base
+// payable amount, using largest-remainder rounding with oldest-item tie breaks.
+// Patient payments settle those resulting payable shares oldest first.
+export function allocateLineItemSettlement(
+  lineItems: SettlementLineItem[],
+  effectiveInsurancePaid: number,
+  vatAmount: number,
+  amountPaid: number,
+): void {
+  assertVnd(effectiveInsurancePaid, "Effective insurance payment");
+  assertVnd(vatAmount, "VAT amount");
+  assertVnd(amountPaid, "Amount paid");
+
+  const settlementOrder = lineItems
+    .map((item, index) => ({ item, index }))
+    .sort(
+      (left, right) =>
+        (left.item.createdAt instanceof Date
+          ? left.item.createdAt.getTime()
+          : 0) -
+          (right.item.createdAt instanceof Date
+            ? right.item.createdAt.getTime()
+            : 0) ||
+        left.index - right.index,
+    );
+  let remainingInsurance = effectiveInsurancePaid;
+  const basePayable = lineItems.map(() => 0);
+  for (const { item, index } of settlementOrder) {
+    assertVnd(item.amount, "Line item amount");
+    if (!item.isCoveredByInsurance || remainingInsurance === 0) {
+      basePayable[index] = item.amount;
+      continue;
+    }
+    const allocatedInsurance = Math.min(item.amount, remainingInsurance);
+    remainingInsurance -= allocatedInsurance;
+    basePayable[index] = item.amount - allocatedInsurance;
+  }
+  if (remainingInsurance !== 0) {
+    throw new BillingCalculationError(
+      "Insurance payment could not be allocated to eligible line items",
+    );
+  }
+
+  const orderedVatShares = proportionalShares(
+    vatAmount,
+    settlementOrder.map(({ index }) => basePayable[index]),
+  );
+  const vatShares = lineItems.map(() => 0);
+  settlementOrder.forEach(({ index }, orderIndex) => {
+    vatShares[index] = orderedVatShares[orderIndex];
+  });
+  let remainingPayment = amountPaid;
+  settlementOrder.forEach(({ item, index }) => {
+    const payableShare = basePayable[index] + vatShares[index];
+    const allocatedPayment = Math.min(payableShare, remainingPayment);
+    remainingPayment -= allocatedPayment;
+    item.paymentStatus =
+      allocatedPayment === payableShare ? "PAID" : "PENDING_PAYMENT";
+  });
+  if (remainingPayment !== 0) {
+    throw new BillingCalculationError(
+      "Patient payment could not be allocated to line items",
+    );
+  }
 }
 
 function automaticInsurancePayment(
@@ -196,7 +308,41 @@ export function calculateBillingAmounts(
 export function recalculateBilling(
   billing: MutableBillingCalculationTarget,
 ): BillingCalculationResult {
-  const result = calculateBillingAmounts(billing);
+  // Defaults keep Billing documents created before insurance/payment support
+  // compatible when they are first recalculated.
+  billing.insurancePlan = INSURANCE_PLANS.includes(billing.insurancePlan)
+    ? billing.insurancePlan
+    : "NONE";
+  billing.insuranceOverrideEnabled = billing.insuranceOverrideEnabled === true;
+  billing.insuranceOverrideAmount = Number.isSafeInteger(
+    billing.insuranceOverrideAmount,
+  )
+    ? billing.insuranceOverrideAmount
+    : 0;
+  billing.paymentTransactions = Array.isArray(billing.paymentTransactions)
+    ? billing.paymentTransactions
+    : [];
+  if (
+    billing.paymentTransactions.length === 0 &&
+    Number.isSafeInteger(billing.amountPaid) &&
+    billing.amountPaid > 0
+  ) {
+    throw new BillingCalculationError(
+      "Existing aggregate payment must be reconciled before ledger mutations",
+    );
+  }
+  const amountPaid = checkedSum(
+    billing.paymentTransactions.map((transaction) => transaction.amount),
+    "Amount paid",
+  );
+  billing.amountPaid = amountPaid;
+  const result = calculateBillingAmounts({
+    lineItems: billing.lineItems,
+    insurancePlan: billing.insurancePlan,
+    insuranceOverrideEnabled: billing.insuranceOverrideEnabled,
+    insuranceOverrideAmount: billing.insuranceOverrideAmount,
+    amountPaid,
+  });
   billing.grossSubtotal = result.grossSubtotal;
   billing.coveredSubtotal = result.coveredSubtotal;
   billing.calculatedInsurancePaid = result.calculatedInsurancePaid;
@@ -206,6 +352,12 @@ export function recalculateBilling(
   billing.totalPatientPayable = result.totalPatientPayable;
   billing.balanceDue = result.balanceDue;
   billing.paymentStatus = result.paymentStatus;
+  allocateLineItemSettlement(
+    billing.lineItems,
+    result.effectiveInsurancePaid,
+    result.vatAmount,
+    amountPaid,
+  );
 
   // Retained for compatibility with the initial Billing foundation.
   billing.subtotal = result.grossSubtotal;

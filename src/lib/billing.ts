@@ -125,6 +125,7 @@ export async function ensureBillingForAppointment({
           invoiceNo,
           lookupCode: generateLookupCode(),
           lineItems: initialLineItems,
+          paymentTransactions: [],
           insurancePlan: "NONE",
           insuranceOverrideEnabled: false,
           insuranceOverrideAmount: 0,

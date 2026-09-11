@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Health Care Portal",
+  title: "BigMedix",
   description: "Clinic management & appointment scheduling system",
 };
 

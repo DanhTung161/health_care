@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import { BarChart3, CalendarDays, ChevronLeft, ChevronRight, CreditCard, Grid2X2, LogOut, Stethoscope, Tags, UserRound, Users, X } from "lucide-react";
 import { useAdminSidebar } from "@/context/AdminSidebarContext";
@@ -62,9 +63,26 @@ export default function AdminSidebar({ role }: { role: Role }) {
           <Link href={roleLandingPage[role]} onClick={(e) => {
             e.stopPropagation();
             closeMobile();
-          }} aria-label="HealthNexus dashboard" className="flex items-center gap-3 px-2 text-[17px] font-bold text-slate-900">
-            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-blue-600 text-white shadow-sm shadow-blue-200">✚</span>
-            <span className={isCollapsed ? "md:hidden" : ""}>HealthNexus</span>
+          }} aria-label="BigMedix dashboard" className="flex items-center px-2">
+            {isCollapsed ? (
+              <Image
+                src="/brand/bigmedix-icon.svg"
+                alt="BigMedix"
+                width={36}
+                height={36}
+                unoptimized
+                className="h-9 w-9 shrink-0"
+              />
+            ) : (
+              <Image
+                src="/brand/bigmedix-logo.svg"
+                alt="BigMedix"
+                width={199}
+                height={42}
+                unoptimized
+                className="h-auto w-[148px]"
+              />
+            )}
           </Link>
           {/* Desktop toggle button */}
           <button type="button" onClick={(e) => {

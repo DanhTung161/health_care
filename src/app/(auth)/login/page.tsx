@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import FormField from "@/components/auth/FormField";
@@ -85,12 +86,16 @@ export default function Page() {
       <div className="w-full max-w-[440px]">
         <Link
           href="/"
-          className="mb-7 flex items-center justify-center gap-2 text-lg font-bold text-slate-900"
+          className="mb-7 flex justify-center"
         >
-          <span className="grid h-9 w-9 place-items-center rounded-xl bg-blue-600 text-white">
-            ✓
-          </span>
-          HealthNexus
+          <Image
+            src="/brand/bigmedix-logo.svg"
+            alt="BigMedix"
+            width={199}
+            height={42}
+            priority
+            className="h-auto w-[180px] sm:w-[199px]"
+          />
         </Link>
         <div className="rounded-3xl border border-slate-100 bg-white p-7 shadow-[0_18px_50px_rgba(30,64,175,0.1)] sm:p-9">
           <div className="mb-8 text-center">
@@ -116,14 +121,6 @@ export default function Page() {
               placeholder="••••••••"
               required
             />
-            <div className="flex justify-end">
-              <Link
-                href="#"
-                className="text-sm font-semibold text-blue-600 hover:text-blue-700"
-              >
-                Quên mật khẩu?
-              </Link>
-            </div>
             {errorMessage && (
               <p
                 role="alert"
@@ -140,18 +137,9 @@ export default function Page() {
               {isSubmitting ? "Đang đăng nhập..." : "Đăng nhập"}
             </button>
           </form>
-          <p className="mt-7 text-center text-sm text-slate-500">
-            Chưa có tài khoản?{" "}
-            <Link
-              href="/register"
-              className="font-semibold text-blue-600 hover:text-blue-700"
-            >
-              Đăng ký ngay
-            </Link>
-          </p>
         </div>
         <p className="mt-6 text-center text-xs text-slate-400">
-          © 2026 HealthNexus. Chăm sóc sức khỏe dễ dàng hơn.
+          © 2026 BigMedix. Chăm sóc sức khỏe dễ dàng hơn.
         </p>
       </div>
     </main>

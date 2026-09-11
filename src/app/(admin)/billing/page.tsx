@@ -1,3 +1,14 @@
-import { Badge, Card, PageIntro } from "@/components/admin/AdminUI";
-const invoices = [["INV-2026-0842","Olivia Martin","General consultation","$120.00","Paid"],["INV-2026-0841","Liam Anderson","Cardiology consultation","$280.00","Pending"],["INV-2026-0840","Emma Thompson","Follow-up visit","$95.00","Paid"],["INV-2026-0839","Noah Williams","Orthopedics","$340.00","Overdue"]];
-export default function Billing(){return <div className="mx-auto max-w-[1400px]"><PageIntro title="Billing overview" action="Create invoice"/><div className="grid gap-4 sm:grid-cols-3"><Card><p className="text-sm text-slate-500">Total collected</p><p className="mt-2 text-2xl font-bold">$48,250.00</p><p className="mt-2 text-xs font-semibold text-emerald-600">↑ 5.2% this month</p></Card><Card><p className="text-sm text-slate-500">Pending payments</p><p className="mt-2 text-2xl font-bold">$8,420.00</p><p className="mt-2 text-xs text-slate-400">12 invoices awaiting payment</p></Card><Card><p className="text-sm text-slate-500">Overdue</p><p className="mt-2 text-2xl font-bold text-rose-500">$1,240.00</p><p className="mt-2 text-xs text-slate-400">3 invoices need attention</p></Card></div><Card className="mt-5"><h3 className="mb-5 font-bold">Recent invoices</h3><div className="overflow-x-auto"><table className="w-full min-w-[650px] text-left text-sm"><thead className="border-b border-slate-100 text-xs text-slate-400"><tr><th className="pb-3 font-medium">Invoice</th><th className="pb-3 font-medium">Patient</th><th className="pb-3 font-medium">Service</th><th className="pb-3 font-medium">Amount</th><th className="pb-3 font-medium">Status</th></tr></thead><tbody>{invoices.map(([id,patient,service,amount,status])=><tr key={id} className="border-b border-slate-50 last:border-0"><td className="py-4 font-semibold text-blue-600">{id}</td><td className="py-4 text-slate-700">{patient}</td><td className="py-4 text-slate-500">{service}</td><td className="py-4 font-semibold">{amount}</td><td className="py-4"><Badge tone={status === "Paid" ? "green" : status === "Pending" ? "amber" : "red"}>{status}</Badge></td></tr>)}</tbody></table></div></Card></div>}
+import BillingManagement from "@/components/admin/BillingManagement";
+import { getCurrentUser } from "@/lib/auth";
+import { roleLandingPage } from "@/lib/roles";
+import { redirect } from "next/navigation";
+
+export default async function BillingPage() {
+  const user = await getCurrentUser();
+  if (!user) redirect("/login");
+  if (user.role !== "ADMIN" && user.role !== "STAFF") {
+    redirect(`${roleLandingPage[user.role]}?error=unauthorized`);
+  }
+
+  return <BillingManagement role={user.role} />;
+}

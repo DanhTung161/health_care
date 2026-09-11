@@ -1,4 +1,10 @@
 import mongoose, { Document, model, models, Schema } from "mongoose";
+import {
+  INSURANCE_PLANS,
+  INSURANCE_VERIFICATION_STATUSES,
+  type InsurancePlan,
+  type InsuranceVerificationStatus,
+} from "@/lib/billing-insurance";
 import "@/models/Appointment";
 import "@/models/Patient";
 import "@/models/User";
@@ -52,11 +58,23 @@ export interface IBilling extends Document {
   lineItems: IBillingLineItem[];
   subtotal: number;
   insurancePaid: number;
+  insurancePlan: InsurancePlan;
+  grossSubtotal: number;
+  coveredSubtotal: number;
+  calculatedInsurancePaid: number;
+  insuranceOverrideEnabled: boolean;
+  insuranceOverrideAmount: number;
+  effectiveInsurancePaid: number;
+  postInsuranceAmount: number;
   vatAmount: number;
   totalPatientPayable: number;
   amountPaid: number;
   balanceDue: number;
   paymentStatus: PaymentStatus;
+  insuranceVerificationStatus: InsuranceVerificationStatus;
+  insuranceNote?: string;
+  verifiedBy?: mongoose.Types.ObjectId;
+  verifiedAt?: Date;
   updatedBy: mongoose.Types.ObjectId;
   createdAt: Date;
   updatedAt: Date;
@@ -147,6 +165,19 @@ const BillingSchema = new Schema<IBilling>(
     },
     subtotal: integerVnd,
     insurancePaid: integerVnd,
+    insurancePlan: {
+      type: String,
+      enum: INSURANCE_PLANS,
+      required: true,
+      default: "NONE",
+    },
+    grossSubtotal: integerVnd,
+    coveredSubtotal: integerVnd,
+    calculatedInsurancePaid: integerVnd,
+    insuranceOverrideEnabled: { type: Boolean, required: true, default: false },
+    insuranceOverrideAmount: { ...integerVnd, default: 0 },
+    effectiveInsurancePaid: integerVnd,
+    postInsuranceAmount: integerVnd,
     vatAmount: integerVnd,
     totalPatientPayable: integerVnd,
     amountPaid: integerVnd,
@@ -157,12 +188,52 @@ const BillingSchema = new Schema<IBilling>(
       required: true,
       default: "UNPAID",
     },
+    insuranceVerificationStatus: {
+      type: String,
+      enum: INSURANCE_VERIFICATION_STATUSES,
+      required: true,
+      default: "NONE",
+    },
+    insuranceNote: { type: String, trim: true, maxlength: 1_000 },
+    verifiedBy: { type: Schema.Types.ObjectId, ref: "User" },
+    verifiedAt: { type: Date },
     updatedBy: { type: Schema.Types.ObjectId, ref: "User", required: true },
   },
   { timestamps: true },
 );
 
 const Billing = models.Billing || model<IBilling>("Billing", BillingSchema);
+
+const cachedBillingFields: Record<string, mongoose.SchemaDefinitionProperty> = {
+  insurancePlan: {
+    type: String,
+    enum: INSURANCE_PLANS,
+    required: true,
+    default: "NONE",
+  },
+  grossSubtotal: integerVnd,
+  coveredSubtotal: integerVnd,
+  calculatedInsurancePaid: integerVnd,
+  insuranceOverrideEnabled: { type: Boolean, required: true, default: false },
+  insuranceOverrideAmount: { ...integerVnd, default: 0 },
+  effectiveInsurancePaid: integerVnd,
+  postInsuranceAmount: integerVnd,
+  insuranceVerificationStatus: {
+    type: String,
+    enum: INSURANCE_VERIFICATION_STATUSES,
+    required: true,
+    default: "NONE",
+  },
+  insuranceNote: { type: String, trim: true, maxlength: 1_000 },
+  verifiedBy: { type: Schema.Types.ObjectId, ref: "User" },
+  verifiedAt: { type: Date },
+};
+
+for (const [path, definition] of Object.entries(cachedBillingFields)) {
+  if (!Billing.schema.path(path)) {
+    Billing.schema.add({ [path]: definition });
+  }
+}
 
 // Next.js development reloads can reuse a model compiled before these embedded
 // service-order fields existed. Register missing paths on that cached schema so

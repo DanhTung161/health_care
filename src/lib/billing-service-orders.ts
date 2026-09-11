@@ -2,6 +2,10 @@ import "server-only";
 
 import mongoose, { type ClientSession } from "mongoose";
 import { prepareBillingPersistence } from "@/lib/billing";
+import {
+  BillingCalculationError,
+  recalculateBilling,
+} from "@/lib/billing-insurance";
 import Appointment from "@/models/Appointment";
 import Billing, {
   BILLING_LINE_ITEM_CATEGORIES,
@@ -207,38 +211,15 @@ function calculateAmount(input: ServiceOrderInput): number {
   return amount;
 }
 
-function recalculateBilling(billing: IBilling): void {
-  const subtotal = billing.lineItems.reduce((sum, item) => sum + item.amount, 0);
-  const totalPatientPayable =
-    subtotal + billing.vatAmount - billing.insurancePaid;
-
-  if (
-    !Number.isSafeInteger(subtotal) ||
-    !Number.isSafeInteger(totalPatientPayable) ||
-    totalPatientPayable < 0
-  ) {
-    throw new BillingServiceOrderError(
-      "The updated invoice totals are invalid",
-      409,
-    );
+function applyBillingCalculation(billing: IBilling): void {
+  try {
+    recalculateBilling(billing);
+  } catch (error) {
+    if (error instanceof BillingCalculationError) {
+      throw new BillingServiceOrderError(error.message, 409);
+    }
+    throw error;
   }
-  if (billing.amountPaid > totalPatientPayable) {
-    throw new BillingServiceOrderError(
-      "The order cannot be changed below the amount already paid",
-      409,
-    );
-  }
-
-  const balanceDue = totalPatientPayable - billing.amountPaid;
-  billing.subtotal = subtotal;
-  billing.totalPatientPayable = totalPatientPayable;
-  billing.balanceDue = balanceDue;
-  billing.paymentStatus =
-    balanceDue === 0
-      ? "PAID"
-      : billing.amountPaid > 0
-        ? "PARTIALLY_PAID"
-        : "UNPAID";
 }
 
 async function loadOwnedBilling(
@@ -380,7 +361,7 @@ export async function addClinicalServiceOrder(
       addedBy: doctorId,
       createdAt: new Date(),
     });
-    recalculateBilling(billing);
+    applyBillingCalculation(billing);
     billing.updatedBy = doctorId;
     await billing.save({ session });
     return resultFor(billing, findLineItem(billing, lineItemId.toString()));
@@ -408,7 +389,7 @@ export async function updateClinicalServiceOrder(
     lineItem.unitPrice = input.unitPrice;
     lineItem.amount = calculateAmount(input);
     lineItem.isCoveredByInsurance = input.isCoveredByInsurance;
-    recalculateBilling(billing);
+    applyBillingCalculation(billing);
     billing.updatedBy = doctorId;
     await billing.save({ session });
     return resultFor(billing, lineItem);
@@ -432,7 +413,7 @@ export async function removeClinicalServiceOrder(
       (item) => item._id.toString() === lineItemId,
     );
     billing.lineItems.splice(index, 1);
-    recalculateBilling(billing);
+    applyBillingCalculation(billing);
     billing.updatedBy = doctorId;
     await billing.save({ session });
     return resultFor(billing, undefined, lineItemId);

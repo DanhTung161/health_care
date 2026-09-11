@@ -6,6 +6,7 @@ import {
   INITIAL_CONSULTATION_DESCRIPTION,
   INITIAL_CONSULTATION_FEE_VND,
 } from "@/lib/billing-config";
+import { calculateBillingAmounts } from "@/lib/billing-insurance";
 import Billing, { type IBilling } from "@/models/Billing";
 
 interface IBillingInvoiceSequence {
@@ -93,6 +94,26 @@ export async function ensureBillingForAppointment({
   const now = new Date();
   const invoiceNo = await nextInvoiceNumber(now, session);
   const initialAmount = INITIAL_CONSULTATION_FEE_VND;
+  const initialLineItems = [
+    {
+      category: "CONSULTATION" as const,
+      description: INITIAL_CONSULTATION_DESCRIPTION,
+      quantity: 1,
+      unitPrice: initialAmount,
+      amount: initialAmount,
+      isCoveredByInsurance: true,
+      paymentStatus: "PENDING_PAYMENT" as const,
+      addedBy: actorId,
+      createdAt: now,
+    },
+  ];
+  const totals = calculateBillingAmounts({
+    lineItems: initialLineItems,
+    insurancePlan: "NONE",
+    insuranceOverrideEnabled: false,
+    insuranceOverrideAmount: 0,
+    amountPaid: 0,
+  });
 
   try {
     const billing = await Billing.findOneAndUpdate(
@@ -103,26 +124,23 @@ export async function ensureBillingForAppointment({
           patientId,
           invoiceNo,
           lookupCode: generateLookupCode(),
-          lineItems: [
-            {
-              category: "CONSULTATION",
-              description: INITIAL_CONSULTATION_DESCRIPTION,
-              quantity: 1,
-              unitPrice: initialAmount,
-              amount: initialAmount,
-              isCoveredByInsurance: true,
-              paymentStatus: "PENDING_PAYMENT",
-              addedBy: actorId,
-              createdAt: now,
-            },
-          ],
-          subtotal: initialAmount,
-          insurancePaid: 0,
-          vatAmount: 0,
-          totalPatientPayable: initialAmount,
+          lineItems: initialLineItems,
+          insurancePlan: "NONE",
+          insuranceOverrideEnabled: false,
+          insuranceOverrideAmount: 0,
+          insuranceVerificationStatus: "NONE",
+          grossSubtotal: totals.grossSubtotal,
+          coveredSubtotal: totals.coveredSubtotal,
+          calculatedInsurancePaid: totals.calculatedInsurancePaid,
+          effectiveInsurancePaid: totals.effectiveInsurancePaid,
+          postInsuranceAmount: totals.postInsuranceAmount,
+          subtotal: totals.grossSubtotal,
+          insurancePaid: totals.effectiveInsurancePaid,
+          vatAmount: totals.vatAmount,
+          totalPatientPayable: totals.totalPatientPayable,
           amountPaid: 0,
-          balanceDue: initialAmount,
-          paymentStatus: "UNPAID",
+          balanceDue: totals.balanceDue,
+          paymentStatus: totals.paymentStatus,
           updatedBy: actorId,
         },
       },

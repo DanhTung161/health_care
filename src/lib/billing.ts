@@ -105,8 +105,15 @@ export async function ensureBillingForAppointment({
           lookupCode: generateLookupCode(),
           lineItems: [
             {
+              category: "CONSULTATION",
               description: INITIAL_CONSULTATION_DESCRIPTION,
+              quantity: 1,
+              unitPrice: initialAmount,
               amount: initialAmount,
+              isCoveredByInsurance: true,
+              paymentStatus: "PENDING_PAYMENT",
+              addedBy: actorId,
+              createdAt: now,
             },
           ],
           subtotal: initialAmount,

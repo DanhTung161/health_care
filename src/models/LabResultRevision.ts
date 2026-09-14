@@ -1,5 +1,6 @@
 import mongoose, { Document, model, models, Schema } from "mongoose";
 import {
+  DIAGNOSTIC_RESULT_LIMITS,
   DIAGNOSTIC_RESULT_REVISION_STATUSES,
   LAB_RESULT_INTERPRETATIONS,
   type DiagnosticResultRevisionStatus,
@@ -35,11 +36,33 @@ export interface ILabResultRevision extends Document {
 
 const LabAnalyteResultSchema = new Schema<ILabAnalyteResult>(
   {
-    code: { type: String, trim: true, maxlength: 64 },
-    name: { type: String, required: true, trim: true, maxlength: 200 },
-    value: { type: String, required: true, trim: true, maxlength: 500 },
-    unit: { type: String, trim: true, maxlength: 100 },
-    referenceRange: { type: String, trim: true, maxlength: 500 },
+    code: {
+      type: String,
+      trim: true,
+      maxlength: DIAGNOSTIC_RESULT_LIMITS.analyteCode,
+    },
+    name: {
+      type: String,
+      required: true,
+      trim: true,
+      maxlength: DIAGNOSTIC_RESULT_LIMITS.analyteName,
+    },
+    value: {
+      type: String,
+      required: true,
+      trim: true,
+      maxlength: DIAGNOSTIC_RESULT_LIMITS.analyteValue,
+    },
+    unit: {
+      type: String,
+      trim: true,
+      maxlength: DIAGNOSTIC_RESULT_LIMITS.analyteUnit,
+    },
+    referenceRange: {
+      type: String,
+      trim: true,
+      maxlength: DIAGNOSTIC_RESULT_LIMITS.referenceRange,
+    },
     interpretation: {
       type: String,
       enum: LAB_RESULT_INTERPRETATIONS,
@@ -74,8 +97,21 @@ const LabResultRevisionSchema = new Schema<ILabResultRevision>(
       required: true,
       default: "DRAFT",
     },
-    analytes: { type: [LabAnalyteResultSchema], required: true, default: [] },
-    clinicalComment: { type: String, trim: true, maxlength: 5_000 },
+    analytes: {
+      type: [LabAnalyteResultSchema],
+      required: true,
+      default: [],
+      validate: {
+        validator: (analytes: ILabAnalyteResult[]) =>
+          analytes.length <= DIAGNOSTIC_RESULT_LIMITS.maxLabAnalytes,
+        message: `Lab results support at most ${DIAGNOSTIC_RESULT_LIMITS.maxLabAnalytes} analytes`,
+      },
+    },
+    clinicalComment: {
+      type: String,
+      trim: true,
+      maxlength: DIAGNOSTIC_RESULT_LIMITS.clinicalComment,
+    },
     correctsRevisionId: {
       type: Schema.Types.ObjectId,
       ref: "LabResultRevision",
@@ -84,7 +120,7 @@ const LabResultRevisionSchema = new Schema<ILabResultRevision>(
     correctionReason: {
       type: String,
       trim: true,
-      maxlength: 2_000,
+      maxlength: DIAGNOSTIC_RESULT_LIMITS.correctionReason,
       immutable: true,
     },
     createdBy: {

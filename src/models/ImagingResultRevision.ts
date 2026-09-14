@@ -1,5 +1,6 @@
 import mongoose, { Document, model, models, Schema } from "mongoose";
 import {
+  DIAGNOSTIC_RESULT_LIMITS,
   DIAGNOSTIC_RESULT_REVISION_STATUSES,
   type DiagnosticResultRevisionStatus,
 } from "@/lib/diagnostic-results";
@@ -49,11 +50,33 @@ const ImagingResultRevisionSchema = new Schema<IImagingResultRevision>(
       required: true,
       default: "DRAFT",
     },
-    findings: { type: String, trim: true, maxlength: 20_000, default: "" },
-    impression: { type: String, trim: true, maxlength: 10_000, default: "" },
-    technique: { type: String, trim: true, maxlength: 5_000 },
-    comparison: { type: String, trim: true, maxlength: 5_000 },
-    recommendation: { type: String, trim: true, maxlength: 5_000 },
+    findings: {
+      type: String,
+      trim: true,
+      maxlength: DIAGNOSTIC_RESULT_LIMITS.imagingFindings,
+      default: "",
+    },
+    impression: {
+      type: String,
+      trim: true,
+      maxlength: DIAGNOSTIC_RESULT_LIMITS.imagingImpression,
+      default: "",
+    },
+    technique: {
+      type: String,
+      trim: true,
+      maxlength: DIAGNOSTIC_RESULT_LIMITS.imagingOptionalSection,
+    },
+    comparison: {
+      type: String,
+      trim: true,
+      maxlength: DIAGNOSTIC_RESULT_LIMITS.imagingOptionalSection,
+    },
+    recommendation: {
+      type: String,
+      trim: true,
+      maxlength: DIAGNOSTIC_RESULT_LIMITS.imagingOptionalSection,
+    },
     correctsRevisionId: {
       type: Schema.Types.ObjectId,
       ref: "ImagingResultRevision",
@@ -62,7 +85,7 @@ const ImagingResultRevisionSchema = new Schema<IImagingResultRevision>(
     correctionReason: {
       type: String,
       trim: true,
-      maxlength: 2_000,
+      maxlength: DIAGNOSTIC_RESULT_LIMITS.correctionReason,
       immutable: true,
     },
     createdBy: {

@@ -127,7 +127,7 @@ when the aggregate status itself remains unchanged. Concurrent sibling updates
 therefore converge through transaction conflict handling rather than leaving
 the item and aggregate states intentionally inconsistent.
 
-Result APIs and UI remain intentionally deferred. The Result foundation below
+Result UI remains intentionally deferred. The Result foundation below
 references each individual `DiagnosticOrderItem` rather than adding a universal
 result field to it. `COMPLETED` means that the diagnostic service workflow
 completed; it does not imply that a Result has been entered, finalized,
@@ -138,24 +138,26 @@ approved, or published.
 Lab and Imaging use separate logical-result and revision collections:
 `LabResult` / `LabResultRevision` and `ImagingResult` /
 `ImagingResultRevision`. Each logical result has one immutable
-`DiagnosticOrderItem` reference and is unique within its result type. The
-future API must load the item and enforce `LAB` versus `IMAGING`; MongoDB cannot
-enforce mutual exclusion across the two collections. Result content lives only
-in revisions, keeping Lab analytes structurally separate from Imaging reports.
+`DiagnosticOrderItem` reference and is unique within its result type. The API
+loads the item and dispatches from its stored `LAB` or `IMAGING` type; it never
+accepts a client-selected result type. It also rejects a conflicting result in
+the other collection because MongoDB cannot enforce mutual exclusion across
+two collections. Result content lives only in revisions, keeping Lab analytes
+structurally separate from Imaging reports.
 
 A logical result stores `latestRevisionVersion`, identifying its newest working
 revision, and optional `currentFinalVersion`, identifying the currently
 effective finalized revision. Both resolve through the unique `(resultId,
 version)` revision index. Keeping both pointers lets a correction draft exist
-without displacing the last finalized clinical result. The future API must
-create the logical result and version 1 together, and must advance either
-pointer with the related revision write in one transaction using the expected
-prior version to prevent concurrent version races.
+without displacing the last finalized clinical result. The API creates the
+logical result and version 1 together, and advances pointers with their related
+revision writes in one transaction using expected prior versions to prevent
+concurrent version races.
 
 Revision lifecycle is intentionally only `DRAFT` and `FINAL`. Draft clinical
 content may be edited. Finalization requires server-derived `finalizedBy` and
-`finalizedAt`; after that, clinical content and finalization audit must be
-immutable in the future service layer. A correction creates version N+1 with a
+`finalizedAt`; after that, clinical content and finalization audit are immutable
+through the Result service. A correction creates version N+1 with a
 required reason and reference to the revision it corrects. The prior revision
 remains unchanged and `FINAL`; once the correction is finalized,
 `currentFinalVersion` advances. There is no ambiguous `CORRECTED` state and no
@@ -180,17 +182,17 @@ Ultrasound, CT, MRI, or a future imaging service without constraining the result
 schema to a fixed catalog.
 
 `createdBy`, `updatedBy`, `finalizedBy`, and their timestamps are Result audit
-data that future APIs must derive from authenticated active Users. Revision
+data that the APIs derive from authenticated active Users. Revision
 `createdBy`/`createdAt` also identify who initiated a correction and when; the
 correction reason and prior-revision link complete that audit trail. Current
-roles cannot reliably identify technicians, pathologists, or radiologists, so
-this foundation defines no Result API permission policy and never infers an
-author from the ordering Doctor or `performedBy`. Result authorship and actual
-diagnostic performance remain distinct.
+roles cannot reliably identify technicians, pathologists, or radiologists.
+Result authorship and actual diagnostic performance therefore remain distinct:
+Result APIs never read or change `DiagnosticOrderItem.performedBy` and never
+infer an author from it.
 
-Future result entry should accept only items in `IN_PROGRESS` or `COMPLETED`
-and reject `ORDERED`, `SCHEDULED`, and `CANCELLED`. Finalization should require a
-`COMPLETED` item, but must not itself transition the item. Thus item
+Result entry and draft editing accept only items in `IN_PROGRESS` or
+`COMPLETED` and reject `ORDERED`, `SCHEDULED`, and `CANCELLED`. Finalization and
+correction require a `COMPLETED` item, but never transition it. Thus item
 `COMPLETED` with a Result `DRAFT` remains valid and the item and Result state
 machines stay separate.
 
@@ -199,6 +201,78 @@ history; corrections supersede them only through the logical finalized-version
 pointer. A future decision may define safe abandonment of drafts. Attachments,
 DICOM, images, PDFs, and other files belong in future external storage with
 metadata references, not binary or Base64 fields in these MongoDB documents.
+
+## Result API and authorization
+
+Results use one item-scoped route family whose payload is selected from the
+stored item type:
+
+- `POST /api/diagnostic-orders/[orderId]/items/[itemId]/result` creates the
+  logical Result and revision 1 `DRAFT`.
+- `GET /api/diagnostic-orders/[orderId]/items/[itemId]/result` returns the
+  logical metadata, latest revision, and current `FINAL` revision when it is a
+  different version.
+- `GET /api/diagnostic-orders/[orderId]/items/[itemId]/result/history` returns
+  revisions oldest-first with bounded `page` and `limit` pagination (default
+  50, maximum 100).
+- `PATCH /api/diagnostic-orders/[orderId]/items/[itemId]/result/draft` fully
+  replaces the current type-specific draft content.
+- `POST /api/diagnostic-orders/[orderId]/items/[itemId]/result/finalize`
+  finalizes the latest draft; its body must be empty.
+- `POST /api/diagnostic-orders/[orderId]/items/[itemId]/result/corrections`
+  creates the next draft from the current final content and accepts only a
+  non-empty `correctionReason`.
+
+`ADMIN` and `STAFF` have read-only access to all Results. A `DOCTOR` can read
+and perform all Result mutations only for DiagnosticOrders whose immutable
+`orderedByDoctorId` matches that Doctor. This is a conservative temporary
+clinical-author policy until specialist roles exist: administrative privilege
+does not imply authority to author or finalize clinical content. Every mutation
+revalidates that the Doctor still exists, is active, and retains the
+authenticated role.
+
+Create and draft-edit bodies use strict type-specific allowlists. Lab drafts
+contain `analytes` and optional `clinicalComment`; Imaging drafts contain
+`findings`, `impression`, and the optional report sections. Audit fields,
+ownership, status, version, correction metadata, and type selectors are
+rejected. Drafts may be incomplete, while finalization additionally requires
+at least one Lab analyte or non-empty Imaging findings and impression.
+
+Draft edits do not create versions. The current draft response exposes a
+`revisionToken` formed as `<revisionId>:<documentVersion>` and the response
+returns it as the strong ETag `"<revisionId>:<documentVersion>"`. Draft edit and
+finalization require that exact quoted value in `If-Match`; weak, malformed,
+multiple, or incomplete tags are rejected. The conditional revision update
+predicates on the token's revision `_id`, logical Result ownership, the current
+clinical revision version, `DRAFT` status, and its Mongoose document version.
+Each successful mutation increments the document version. Consequently, a
+stale token cannot overwrite the same revision or alias a newer correction
+revision whose document version also began at zero; conflicts return `409`.
+
+Finalization changes only the latest `DRAFT` to `FINAL`, derives
+`finalizedBy`, `finalizedAt`, and `updatedBy` on the server, and advances
+`currentFinalVersion` in the same transaction. No API can edit a `FINAL`
+revision. A correction is the only supported change after finalization: the
+server copies the current final's clinical content into version N+1 `DRAFT`,
+records its source and reason, advances only `latestRevisionVersion`, and keeps
+the previous `currentFinalVersion` readable until the correction is finalized.
+Expected logical-pointer predicates and unique `(resultId, version)` indexes
+turn concurrent correction or pointer races into safe `409` responses.
+
+If an item becomes `CANCELLED`, an existing draft remains readable for audit,
+but it cannot be edited or finalized and is never deleted. There is currently
+no abandon/revert operation for an initial or correction draft; that business
+policy remains deferred.
+
+A lower-severity concurrency edge remains when Result creation or draft editing
+on an `IN_PROGRESS` item overlaps the separate item transition to `CANCELLED`.
+The Result transaction reads but does not update the item document, while the
+workflow transaction writes the item and not the Result, so MongoDB need not
+produce a write conflict between them. The committed Result is preserved for
+audit and later Result mutations observe `CANCELLED`, but an overlapping write
+may finish after cancellation. This phase does not add an item workflow version
+or otherwise redesign DiagnosticOrderItem concurrency. Finalization is not
+affected because it requires terminal item status `COMPLETED`.
 
 ## Future Billing boundary
 
@@ -209,8 +283,6 @@ from diagnostic clinical records.
 
 ## Deferred
 
-- Result create/read/edit APIs and RBAC policy
-- Result finalization and correction APIs
 - Result UI, reporting, approval, and publication rules
 - Diagnostic UI and dashboards
 - Diagnostic workforce/technician role model

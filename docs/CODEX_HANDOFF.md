@@ -2,7 +2,7 @@
 
 ## Current Phase
 
-Lab / Imaging Result Foundation
+Result API + RBAC + Finalization/Correction Workflow
 
 ## Completed
 
@@ -34,6 +34,17 @@ Lab / Imaging Result Foundation
   impression content.
 - Added minimal DRAFT/FINAL lifecycle constants, finalization audit fields,
   correction metadata, deterministic version pointers, and uniqueness indexes.
+- Added item-scoped create/read/history, current-draft edit, finalization, and
+  correction Result APIs for both Lab and Imaging.
+- Added strict type-specific payload validation, safe serializers, bounded
+  history pagination, and cross-type conflict detection.
+- Added a conservative Result RBAC policy: `ADMIN`/`STAFF` read all, while the
+  assigned active `DOCTOR` reads and performs clinical Result mutations.
+- Added transactional initial creation, finalization, and correction writes,
+  expected-pointer predicates, unique-version conflict handling, and
+  `If-Match` draft revision tokens for edit/finalize races.
+- Enforced FINAL immutability through explicit operations; corrections copy the
+  current FINAL content into a new DRAFT without rewriting historical versions.
 
 ## Architecture Decisions
 
@@ -96,29 +107,48 @@ Lab / Imaging Result Foundation
 - Lab and Imaging use separate logical-result and revision collections; Result
   content is never stored on DiagnosticOrderItem or forced into a universal
   payload.
-- One logical result is unique per item within each type. A future API must
-  validate the item type because MongoDB cannot enforce mutual exclusion across
-  the Lab and Imaging collections.
+- One logical result is unique per item within each type. The Result API derives
+  its path from the stored item type and checks the other collection because
+  MongoDB cannot enforce mutual exclusion across the Lab and Imaging
+  collections.
 - `latestRevisionVersion` identifies the newest working revision;
   `currentFinalVersion` independently identifies the clinically current FINAL
   revision, allowing a correction draft without hiding the last final result.
 - Revisions use only `DRAFT` and `FINAL`. FINAL revisions remain unchanged;
   corrections create version N+1 with a reason and prior-revision reference.
   No old FINAL document is rewritten to a synthetic CORRECTED state.
-- Unique `(resultId, version)` indexes prevent duplicate version numbers. Future
-  APIs must create revisions and compare/update logical version pointers in one
-  transaction to resolve concurrent corrections safely.
+- Unique `(resultId, version)` indexes prevent duplicate version numbers.
+  Revisions and logical version-pointer updates share one transaction, while
+  expected prior-pointer predicates resolve concurrent corrections safely.
 - Lab values and reference ranges are textual historical snapshots, and
   interpretation is explicitly stored rather than calculated. Imaging keeps
   findings and impression separate and reuses the item's immutable service
   snapshot rather than defining a modality catalog.
-- Finalization audit uses `finalizedBy` and `finalizedAt`. Revision creation and
-  update actors are separate from the ordering Doctor and actual performer;
-  Result APIs must derive all actors from authenticated active Users.
-- Draft content is schema-editable; FINAL immutability, item-type/status checks,
-  revision-pointer consistency, and actor permissions belong to the future
-  transactional Result service. Finalization should require item `COMPLETED`
-  without automatically changing item state.
+- Finalization audit uses server-derived `finalizedBy` and `finalizedAt`.
+  Revision creation and update actors are separate from the ordering Doctor and
+  actual performer; Result APIs derive every actor from the authenticated
+  active User and never read or change item `performedBy`.
+- Result entry and draft editing allow `IN_PROGRESS` or `COMPLETED` items.
+  Finalization and corrections require `COMPLETED`. Result operations never
+  transition the DiagnosticOrderItem state machine.
+- `ADMIN` and `STAFF` have read-only Result access. Until specialist roles
+  exist, only the active assigned `DOCTOR` may create/edit/finalize/correct a
+  Result for their own DiagnosticOrder; administrative privilege is not
+  clinical authorship authority.
+- Draft editing is full content replacement and does not allocate a version.
+  Its strong `If-Match` ETag binds the revision `_id` to that document's
+  Mongoose `__v` as `"<revisionId>:<documentVersion>"`. Edit and finalization
+  predicates include that identity/version pair, logical Result ownership,
+  current clinical revision version, and `DRAFT` status. This prevents an old
+  revision token from aliasing a newer correction whose `__v` also began at
+  zero; stale operations return `409`.
+- Initial logical Result plus revision 1, finalization plus final-pointer
+  advance, and correction revision plus latest-pointer advance each run in one
+  Mongoose transaction. A correction copies the server-selected current FINAL,
+  records its source/reason, and leaves `currentFinalVersion` unchanged until
+  the new draft is finalized.
+- FINAL clinical content is not accepted by any update API. The only later
+  change is a new correction revision, so prior FINAL records remain immutable.
 - There is no Result hard-delete design. Final history is retained and corrected
   through new revisions; draft-abandonment policy and external file storage are
   deferred.
@@ -129,6 +159,8 @@ Lab / Imaging Result Foundation
 - `src/lib/diagnostic-orders.ts`
 - `src/lib/diagnostic-item-transitions.ts`
 - `src/lib/diagnostic-results.ts`
+- `src/lib/diagnostic-result-service.ts`
+- `src/lib/diagnostic-result-route.ts`
 - `src/models/DiagnosticOrder.ts`
 - `src/models/DiagnosticOrderItem.ts`
 - `src/models/LabResult.ts`
@@ -138,6 +170,11 @@ Lab / Imaging Result Foundation
 - `src/app/api/diagnostic-orders/route.ts`
 - `src/app/api/diagnostic-orders/[id]/route.ts`
 - `src/app/api/diagnostic-orders/[orderId]/items/[itemId]/status/route.ts`
+- `src/app/api/diagnostic-orders/[orderId]/items/[itemId]/result/route.ts`
+- `src/app/api/diagnostic-orders/[orderId]/items/[itemId]/result/history/route.ts`
+- `src/app/api/diagnostic-orders/[orderId]/items/[itemId]/result/draft/route.ts`
+- `src/app/api/diagnostic-orders/[orderId]/items/[itemId]/result/finalize/route.ts`
+- `src/app/api/diagnostic-orders/[orderId]/items/[itemId]/result/corrections/route.ts`
 - `src/lib/roles.ts`
 - `src/models/MedicalVisit.ts`
 - `src/models/Patient.ts`
@@ -147,9 +184,9 @@ Lab / Imaging Result Foundation
 ## Deferred Work
 
 - Diagnostic UI
-- Result API and RBAC policy
-- Result finalization/correction API
 - Result UI and reporting
+- Result draft abandonment/revert policy
+- Result approval/publication policy
 - Diagnostic workforce/technician role model
 - Service Catalog
 - Billing and Revenue integration
@@ -173,14 +210,52 @@ collection, verify that no duplicate `(diagnosticOrderId, serviceCode)` pairs
 already exist. Index creation will fail safely if legacy duplicates are present;
 this pass does not delete or rewrite clinical records.
 
-Result schemas cannot verify the referenced item's type or prevent the same
-item from being referenced once in each type-specific collection. The future
-Result API must enforce item-type exclusivity transactionally. Its author and
-finalizer permission policy also remains unresolved because the current roles
-do not identify Lab/Radiology specialists or technicians.
+Result schemas cannot independently verify the referenced item's type or
+prevent the same item from being referenced once in each type-specific
+collection. The Result API enforces both rules, but future direct model write
+paths must continue using that service boundary. The current assigned-Doctor
+mutation policy is intentionally temporary because the role model still cannot
+identify Lab/Radiology specialists or technicians.
+
+Result creation or draft editing on an `IN_PROGRESS` item can overlap the
+separate item transition to `CANCELLED`. The two transactions update different
+documents, so the item read in the Result transaction does not guarantee a
+write conflict. A Result write may therefore finish after cancellation; it is
+preserved for audit, and later Result mutations reject the cancelled state.
+This lower-severity edge remains documented rather than adding an item workflow
+version in the Phase 5 token correction. Finalization still requires terminal
+item status `COMPLETED` and is not subject to this overlap.
 
 ## Verification
 
+- Phase 5 isolated service verification passed without connecting to or
+  mutating MongoDB. It covered Lab/Imaging initial drafts, stored-type dispatch,
+  invalid item states, duplicate/cross-type conflicts, full draft edits,
+  finalization requirements, correction copy/pointers, preservation of prior
+  FINAL content, paginated history, and protected audit fields.
+- Phase 5 RBAC verification covered assigned and unrelated Doctors, `ADMIN`,
+  `STAFF`, inactive Users, and role mismatch after token issuance. The assigned
+  active Doctor was the only mutation actor; read and mutation behavior were
+  tested separately.
+- Phase 5 concurrency inspection verified revision-token predicates for two
+  edits and edit/finalize races, logical expected-pointer predicates for
+  correction/finalization races, unique logical/revision indexes, transactional
+  writes, and safe duplicate-key conflict mapping. No live clinical data was
+  created.
+- The focused Phase 5 token regression harness verified that a revision v1
+  token with document version zero cannot edit or finalize correction revision
+  v2 with its own document version zero. The v2 token successfully edited,
+  returned an incremented token, rejected token reuse, and then finalized v2
+  while advancing `currentFinalVersion`. Missing, weak, malformed, incomplete,
+  ambiguous, invalid-ObjectId, fractional, negative, and unsafe-integer tags
+  were rejected without database access.
+- Phase 5 focused ESLint and focused TypeScript checks passed. Full
+  `npm run lint` passed with no errors and the pre-existing unused-disable
+  warning in `src/lib/db.ts`.
+- The Phase 5 production build compiled successfully, then failed during
+  generated route type validation only because the pre-existing empty
+  `doctor-list` and `services` client pages are not modules. Next.js also
+  reported the existing `middleware` convention deprecation warning.
 - Phase 4 in-memory model/schema verification passed without connecting to or
   mutating MongoDB. It covered multiple Lab analytes, textual values and range
   snapshots, interpretation validation, distinct Imaging findings/impression,
@@ -240,11 +315,10 @@ do not identify Lab/Radiology specialists or technicians.
 
 ## Next Phase
 
-Result API + RBAC + Finalization/Correction Workflow
+Diagnostic / Result UI Foundation
 
 ## Recommended Next Step
 
-Implement transactional, type-aware Result create/read/draft-edit/finalize and
-correction operations. Derive actors server-side, validate item type/status,
-and atomically advance expected logical version pointers without changing the
-DiagnosticOrderItem state machine.
+Build the first Diagnostic / Result UI against the explicit item-scoped APIs,
+including revision-token handling and read-only historical FINAL display,
+without weakening the documented clinical RBAC policy.

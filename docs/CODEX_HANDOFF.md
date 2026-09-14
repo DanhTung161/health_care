@@ -2,7 +2,7 @@
 
 ## Current Phase
 
-Diagnostic Item Status-Transition API
+Lab / Imaging Result Foundation
 
 ## Completed
 
@@ -28,6 +28,12 @@ Diagnostic Item Status-Transition API
   prior scheduling and execution history.
 - Added expected-status concurrency protection and transactional parent status
   recomputation after every item transition.
+- Added separate Lab and Imaging logical-result models and type-specific
+  revision models.
+- Added structured multi-analyte Lab content and distinct Imaging findings and
+  impression content.
+- Added minimal DRAFT/FINAL lifecycle constants, finalization audit fields,
+  correction metadata, deterministic version pointers, and uniqueness indexes.
 
 ## Architecture Decisions
 
@@ -41,7 +47,7 @@ Diagnostic Item Status-Transition API
   preserves historical readability.
 - No service catalog exists. Immutable service code/name snapshots are stored;
   a future optional catalog reference must not replace them.
-- Future Lab and Imaging results should use type-specific records referencing a
+- Lab and Imaging results use type-specific records referencing a
   `DiagnosticOrderItem`.
 - Future Billing should reference `DiagnosticOrderItem`, not the parent order.
 - Only the active Doctor assigned to the MedicalVisit can create an order.
@@ -87,14 +93,48 @@ Diagnostic Item Status-Transition API
   the client.
 - Diagnostic item `COMPLETED` currently means service-workflow completion only;
   it does not imply result entry, approval, or publication.
+- Lab and Imaging use separate logical-result and revision collections; Result
+  content is never stored on DiagnosticOrderItem or forced into a universal
+  payload.
+- One logical result is unique per item within each type. A future API must
+  validate the item type because MongoDB cannot enforce mutual exclusion across
+  the Lab and Imaging collections.
+- `latestRevisionVersion` identifies the newest working revision;
+  `currentFinalVersion` independently identifies the clinically current FINAL
+  revision, allowing a correction draft without hiding the last final result.
+- Revisions use only `DRAFT` and `FINAL`. FINAL revisions remain unchanged;
+  corrections create version N+1 with a reason and prior-revision reference.
+  No old FINAL document is rewritten to a synthetic CORRECTED state.
+- Unique `(resultId, version)` indexes prevent duplicate version numbers. Future
+  APIs must create revisions and compare/update logical version pointers in one
+  transaction to resolve concurrent corrections safely.
+- Lab values and reference ranges are textual historical snapshots, and
+  interpretation is explicitly stored rather than calculated. Imaging keeps
+  findings and impression separate and reuses the item's immutable service
+  snapshot rather than defining a modality catalog.
+- Finalization audit uses `finalizedBy` and `finalizedAt`. Revision creation and
+  update actors are separate from the ordering Doctor and actual performer;
+  Result APIs must derive all actors from authenticated active Users.
+- Draft content is schema-editable; FINAL immutability, item-type/status checks,
+  revision-pointer consistency, and actor permissions belong to the future
+  transactional Result service. Finalization should require item `COMPLETED`
+  without automatically changing item state.
+- There is no Result hard-delete design. Final history is retained and corrected
+  through new revisions; draft-abandonment policy and external file storage are
+  deferred.
 
 ## Important Files
 
 - `src/lib/diagnostic.ts`
 - `src/lib/diagnostic-orders.ts`
 - `src/lib/diagnostic-item-transitions.ts`
+- `src/lib/diagnostic-results.ts`
 - `src/models/DiagnosticOrder.ts`
 - `src/models/DiagnosticOrderItem.ts`
+- `src/models/LabResult.ts`
+- `src/models/LabResultRevision.ts`
+- `src/models/ImagingResult.ts`
+- `src/models/ImagingResultRevision.ts`
 - `src/app/api/diagnostic-orders/route.ts`
 - `src/app/api/diagnostic-orders/[id]/route.ts`
 - `src/app/api/diagnostic-orders/[orderId]/items/[itemId]/status/route.ts`
@@ -107,13 +147,15 @@ Diagnostic Item Status-Transition API
 ## Deferred Work
 
 - Diagnostic UI
-- Lab result workflow
-- Imaging result workflow
-- Result audit and correction rules
+- Result API and RBAC policy
+- Result finalization/correction API
+- Result UI and reporting
+- Diagnostic workforce/technician role model
 - Service Catalog
 - Billing and Revenue integration
 - Shopify integration
 - MedicalVisit lifecycle decision
+- Medical-image and report-file storage
 
 ## Known Issues
 
@@ -131,8 +173,30 @@ collection, verify that no duplicate `(diagnosticOrderId, serviceCode)` pairs
 already exist. Index creation will fail safely if legacy duplicates are present;
 this pass does not delete or rewrite clinical records.
 
+Result schemas cannot verify the referenced item's type or prevent the same
+item from being referenced once in each type-specific collection. The future
+Result API must enforce item-type exclusivity transactionally. Its author and
+finalizer permission policy also remains unresolved because the current roles
+do not identify Lab/Radiology specialists or technicians.
+
 ## Verification
 
+- Phase 4 in-memory model/schema verification passed without connecting to or
+  mutating MongoDB. It covered multiple Lab analytes, textual values and range
+  snapshots, interpretation validation, distinct Imaging findings/impression,
+  DRAFT/FINAL audit rules, correction metadata, version pointers, and named
+  uniqueness indexes.
+- The same audit confirmed Lab/Imaging structural separation, immutable item
+  ownership and revision identity, multiple revision representability,
+  independent version-1 histories, no `performedBy` dependency, no financial or
+  attachment fields, no Result states added to DiagnosticOrderItem, and no
+  delete workflow.
+- Phase 4 focused ESLint and focused TypeScript checks passed.
+- Full `npm run lint` passed with no errors and the pre-existing unused-disable
+  warning in `src/lib/db.ts`.
+- The production build compiled successfully, then failed at generated route
+  type validation only because the pre-existing empty `doctor-list` and
+  `services` client pages are not modules.
 - The performer-audit correction verified that start/completion set their
   server timestamps and `updatedBy` without inventing `performedBy`; an existing
   legitimate performer remains unchanged and client-supplied performer data is
@@ -176,10 +240,11 @@ this pass does not delete or rewrite clinical records.
 
 ## Next Phase
 
-Lab / Imaging Result Foundation
+Result API + RBAC + Finalization/Correction Workflow
 
 ## Recommended Next Step
 
-Design separate type-appropriate Lab and Imaging result records that reference
-`DiagnosticOrderItem`, including explicit result audit/correction semantics,
-without mixing result state into the now-stable service workflow prematurely.
+Implement transactional, type-aware Result create/read/draft-edit/finalize and
+correction operations. Derive actors server-side, validate item type/status,
+and atomically advance expected logical version pointers without changing the
+DiagnosticOrderItem state machine.

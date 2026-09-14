@@ -70,7 +70,7 @@ so the same service may be ordered again in another order.
 
 Item status is authoritative for partial completion and cancellation. The
 order status is a denormalized aggregate maintained transactionally by the
-future workflow service. An order must not become `COMPLETED` while any active
+item workflow service. An order must not become `COMPLETED` while any active
 item remains `ORDERED`, `SCHEDULED`, or `IN_PROGRESS`; all-cancelled orders become
 `CANCELLED`. No hard-delete workflow is intended for either clinical record.
 
@@ -127,12 +127,78 @@ when the aggregate status itself remains unchanged. Concurrent sibling updates
 therefore converge through transaction conflict handling rather than leaving
 the item and aggregate states intentionally inconsistent.
 
-Results are intentionally deferred. Future Lab results should use structured
-analyte/value/unit/reference-range data, while Imaging should use findings and
-impression structures. Those result records should reference the individual
-`DiagnosticOrderItem`, rather than adding one universal result field here. In
-this phase, `COMPLETED` means that the diagnostic service workflow completed;
-it does not imply that a result record has been entered, approved, or published.
+Result APIs and UI remain intentionally deferred. The Result foundation below
+references each individual `DiagnosticOrderItem` rather than adding a universal
+result field to it. `COMPLETED` means that the diagnostic service workflow
+completed; it does not imply that a Result has been entered, finalized,
+approved, or published.
+
+## Result architecture
+
+Lab and Imaging use separate logical-result and revision collections:
+`LabResult` / `LabResultRevision` and `ImagingResult` /
+`ImagingResultRevision`. Each logical result has one immutable
+`DiagnosticOrderItem` reference and is unique within its result type. The
+future API must load the item and enforce `LAB` versus `IMAGING`; MongoDB cannot
+enforce mutual exclusion across the two collections. Result content lives only
+in revisions, keeping Lab analytes structurally separate from Imaging reports.
+
+A logical result stores `latestRevisionVersion`, identifying its newest working
+revision, and optional `currentFinalVersion`, identifying the currently
+effective finalized revision. Both resolve through the unique `(resultId,
+version)` revision index. Keeping both pointers lets a correction draft exist
+without displacing the last finalized clinical result. The future API must
+create the logical result and version 1 together, and must advance either
+pointer with the related revision write in one transaction using the expected
+prior version to prevent concurrent version races.
+
+Revision lifecycle is intentionally only `DRAFT` and `FINAL`. Draft clinical
+content may be edited. Finalization requires server-derived `finalizedBy` and
+`finalizedAt`; after that, clinical content and finalization audit must be
+immutable in the future service layer. A correction creates version N+1 with a
+required reason and reference to the revision it corrects. The prior revision
+remains unchanged and `FINAL`; once the correction is finalized,
+`currentFinalVersion` advances. There is no ambiguous `CORRECTED` state and no
+destructive replacement. Schema validation enforces audit-field consistency,
+correction metadata shape, and integer versions, while cross-document state,
+latest-version selection, and finalized immutability remain transactional API
+responsibilities.
+
+Lab revisions contain zero or more analytes while in draft and require at least
+one for finalization. Each analyte snapshots an optional code, name, original
+string value, optional unit, optional textual reference range, and explicit
+`NORMAL | HIGH | LOW | ABNORMAL | CRITICAL | UNKNOWN` interpretation. String
+values preserve numeric-looking, inequality, categorical, and textual results;
+the model neither converts values nor calculates ranges or abnormality. An
+optional clinical comment is distinct from correction reasons and workflow
+notes.
+
+Imaging revisions keep required-on-finalization `findings` and `impression`
+separate, with optional technique, comparison, and recommendation. No modality
+enum is duplicated: the immutable item service code/name identify X-Ray,
+Ultrasound, CT, MRI, or a future imaging service without constraining the result
+schema to a fixed catalog.
+
+`createdBy`, `updatedBy`, `finalizedBy`, and their timestamps are Result audit
+data that future APIs must derive from authenticated active Users. Revision
+`createdBy`/`createdAt` also identify who initiated a correction and when; the
+correction reason and prior-revision link complete that audit trail. Current
+roles cannot reliably identify technicians, pathologists, or radiologists, so
+this foundation defines no Result API permission policy and never infers an
+author from the ordering Doctor or `performedBy`. Result authorship and actual
+diagnostic performance remain distinct.
+
+Future result entry should accept only items in `IN_PROGRESS` or `COMPLETED`
+and reject `ORDERED`, `SCHEDULED`, and `CANCELLED`. Finalization should require a
+`COMPLETED` item, but must not itself transition the item. Thus item
+`COMPLETED` with a Result `DRAFT` remains valid and the item and Result state
+machines stay separate.
+
+No Result delete workflow exists. Final revisions are permanent clinical
+history; corrections supersede them only through the logical finalized-version
+pointer. A future decision may define safe abandonment of drafts. Attachments,
+DICOM, images, PDFs, and other files belong in future external storage with
+metadata references, not binary or Base64 fields in these MongoDB documents.
 
 ## Future Billing boundary
 
@@ -143,10 +209,13 @@ from diagnostic clinical records.
 
 ## Deferred
 
-- Lab and Imaging result models/workflows
-- Result audit, correction, approval, and publication rules
+- Result create/read/edit APIs and RBAC policy
+- Result finalization and correction APIs
+- Result UI, reporting, approval, and publication rules
 - Diagnostic UI and dashboards
+- Diagnostic workforce/technician role model
 - Service catalog and pricing
 - Billing/Revenue integration
 - Shopify integration
 - MedicalVisit lifecycle policy for old or clinically finalized visits
+- Medical-image and report-file storage

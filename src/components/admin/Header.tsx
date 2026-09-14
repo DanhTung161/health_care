@@ -11,6 +11,7 @@ const titles: Record<string, [string, string]> = {
   dashboard: ["Dashboard", "Welcome back, Dr. Sarah Johnson"],
   patients: ["Patients", "Manage patient records and medical history"],
   appointments: ["Appointments", "Stay on top of today’s schedule"],
+  diagnostics: ["Diagnostics", "Review diagnostic orders and clinical results"],
   doctors: ["Doctors", "Your clinical team and availability"],
   billing: ["Billing", "Track invoices, payments and revenue"],
   analytics: ["Analytics", "Insights to help your clinic perform better"],

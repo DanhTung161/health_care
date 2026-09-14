@@ -138,12 +138,20 @@ export default async function PatientDetailPage({
       <PageIntro
         title="Patient profile"
         actionSlot={
-          <Link
-            href="/patients"
-            className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50"
-          >
-            Back to patients
-          </Link>
+          <div className="flex flex-wrap gap-2">
+            <Link
+              href={`/diagnostics?patientId=${patient._id}`}
+              className="rounded-xl border border-blue-200 px-4 py-2.5 text-sm font-semibold text-blue-600 hover:bg-blue-50"
+            >
+              View diagnostics
+            </Link>
+            <Link
+              href="/patients"
+              className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50"
+            >
+              Back to patients
+            </Link>
+          </div>
         }
       />
 

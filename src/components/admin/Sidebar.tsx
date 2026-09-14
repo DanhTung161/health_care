@@ -3,7 +3,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
-import { BarChart3, CalendarDays, ChevronLeft, ChevronRight, CreditCard, Grid2X2, LogOut, Stethoscope, Tags, UserRound, Users, X } from "lucide-react";
+import { BarChart3, CalendarDays, ChevronLeft, ChevronRight, CreditCard, FlaskConical, Grid2X2, LogOut, Stethoscope, Tags, UserRound, Users, X } from "lucide-react";
 import { useAdminSidebar } from "@/context/AdminSidebarContext";
 import { allowedRoutePrefixes, roleLandingPage, type Role } from "@/lib/roles";
 
@@ -11,6 +11,7 @@ const items = [
   { label: "Dashboard", href: "/dashboard", icon: Grid2X2 },
   { label: "Patients", href: "/patients", icon: Users },
   { label: "Appointments", href: "/appointments", icon: CalendarDays },
+  { label: "Diagnostics", href: "/diagnostics", icon: FlaskConical },
   { label: "Doctors", href: "/doctors", icon: Stethoscope },
   { label: "Billing", href: "/billing", icon: CreditCard },
   { label: "Analytics", href: "/analytics", icon: BarChart3 },

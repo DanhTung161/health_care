@@ -12,6 +12,7 @@ export const allowedRoutePrefixes: Record<Exclude<Role, "ADMIN">, string[]> = {
   DOCTOR: [
     "/appointments",
     "/patients",
+    "/diagnostics",
     "/api/appointments",
     "/api/patients",
     "/api/diagnostic-orders",
@@ -20,6 +21,7 @@ export const allowedRoutePrefixes: Record<Exclude<Role, "ADMIN">, string[]> = {
     "/appointments",
     "/patients",
     "/billing",
+    "/diagnostics",
     "/api/appointments",
     "/api/patients",
     "/api/billing",

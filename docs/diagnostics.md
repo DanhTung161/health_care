@@ -264,6 +264,46 @@ but it cannot be edited or finalized and is never deleted. There is currently
 no abandon/revert operation for an initial or correction draft; that business
 policy remains deferred.
 
+## Diagnostic and Result UI
+
+The authenticated admin shell exposes a single `Diagnostics` navigation entry.
+`/diagnostics` lists real orders with the API's patient, type, status, UTC date,
+and pagination filters; `/diagnostics/[id]` displays order metadata and keeps
+each item's workflow status visually separate from its Result lifecycle. Patient
+detail links into the same list with a patient filter instead of duplicating a
+diagnostic workflow. Because the current read model does not return patient or
+audit-actor names, the UI displays truthful linked identifiers rather than
+issuing per-row lookups or fabricating labels.
+
+Result state is loaded only when an item's Result panel is opened, and revision
+history is loaded only when its history view is opened. This avoids requesting
+one Result and complete history for every order item. `ADMIN` and `STAFF` see
+read-only Result content. A `DOCTOR` sees create, edit, finalize, and correction
+actions only when the order's exact `orderedByDoctor.id` matches their current
+User ID. The server remains authoritative for every operation.
+
+Lab and Imaging editors use the item type selected by the server; there is no
+client Result-type selector. Draft save sends the complete current clinical
+payload, omitting a cleared optional string so the server unsets it, because the
+API uses full-replacement semantics. Drafts may remain incomplete. Before
+finalization, the UI checks the type-specific minimum content and requires an
+explicit confirmation explaining that the revision becomes immutable clinical
+history and later changes require a correction.
+
+The client reads the exact strong ETag returned with the latest revision and
+retains it with that item panel. It sends that value unchanged in `If-Match` for
+draft edit and finalization, and replaces it after every successful create,
+save, correction, or reload. A stale `409` is never retried automatically. The
+UI keeps local editor values, explains the conflict, and requires confirmation
+before a reload discards those values.
+
+When the latest revision is a correction `DRAFT`, the UI shows it as a
+`Correction Draft` while also rendering the prior `currentFinalVersion` as the
+clinically effective `Current Final`. Paginated history remains read-only and
+allows any returned revision to be inspected without making an old revision
+editable. Cancelled items retain readable Result/history data but expose no
+create, edit, finalize, or correction controls.
+
 A lower-severity concurrency edge remains when Result creation or draft editing
 on an `IN_PROGRESS` item overlaps the separate item transition to `CANCELLED`.
 The Result transaction reads but does not update the item document, while the
@@ -283,8 +323,9 @@ from diagnostic clinical records.
 
 ## Deferred
 
-- Result UI, reporting, approval, and publication rules
-- Diagnostic UI and dashboards
+- Advanced Diagnostic dashboards and reporting
+- Diagnostic item workflow mutation controls
+- Result approval and publication rules
 - Diagnostic workforce/technician role model
 - Service catalog and pricing
 - Billing/Revenue integration

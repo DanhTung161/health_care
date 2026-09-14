@@ -2,7 +2,7 @@
 
 ## Current Phase
 
-Result API + RBAC + Finalization/Correction Workflow
+Diagnostic / Result UI Foundation
 
 ## Completed
 
@@ -45,6 +45,18 @@ Result API + RBAC + Finalization/Correction Workflow
   `If-Match` draft revision tokens for edit/finalize races.
 - Enforced FINAL immutability through explicit operations; corrections copy the
   current FINAL content into a new DRAFT without rewriting historical versions.
+- Added `/diagnostics` list and `/diagnostics/[id]` detail views inside the
+  existing authenticated shell, plus a patient-detail link into the filtered
+  order list.
+- Added separate workflow and Result-state displays, lazy item Result loading,
+  and lazy paginated revision history.
+- Added type-specific Lab and Imaging draft editors, finalization confirmation,
+  correction creation/editing, read-only FINAL/revision views, and explicit
+  current-FINAL versus correction-DRAFT presentation.
+- Added role-aware controls: `ADMIN`/`STAFF` remain read-only, and only an
+  assigned `DOCTOR` sees clinical Result mutation actions.
+- Added a small client API helper that preserves HTTP status, JSON errors, and
+  the exact strong ETag required for revision-safe edit/finalize operations.
 
 ## Architecture Decisions
 
@@ -152,6 +164,26 @@ Result API + RBAC + Finalization/Correction Workflow
 - There is no Result hard-delete design. Final history is retained and corrected
   through new revisions; draft-abandonment policy and external file storage are
   deferred.
+- Diagnostics uses thin Server Component pages for route/search parameters and
+  current-user identity. Focused Client Components own list fetching, Result
+  panels, forms, dialogs, and mutation state; no global client store was added.
+- Order details load once, each current Result loads only when its item panel is
+  opened, and revision history loads only on demand. No bulk endpoint or
+  per-list-row Result request storm was introduced.
+- Result UI derives the Result type from the returned item and never sends a
+  type selector, version, status, pointer, performer, or audit identity.
+- Draft editors submit full type-specific replacement payloads and intentionally
+  omit cleared optional strings so the server clears rather than restores stale
+  content.
+- The exact response ETag is stored per open Result panel, sent unchanged in
+  `If-Match`, and replaced after create, save, correction, or reload. A stale
+  `409` is not retried; local values remain until the user confirms reload.
+- A correction DRAFT and its prior current FINAL render together. The UI states
+  that the prior FINAL remains clinically effective until correction
+  finalization; history revisions are always read-only.
+- Mutation visibility requires both role `DOCTOR` and exact ordering-Doctor ID
+  ownership. `ADMIN`, `STAFF`, and an unrelated Doctor receive no clinical
+  mutation controls, while server authorization remains authoritative.
 
 ## Important Files
 
@@ -161,6 +193,7 @@ Result API + RBAC + Finalization/Correction Workflow
 - `src/lib/diagnostic-results.ts`
 - `src/lib/diagnostic-result-service.ts`
 - `src/lib/diagnostic-result-route.ts`
+- `src/lib/diagnostic-client.ts`
 - `src/models/DiagnosticOrder.ts`
 - `src/models/DiagnosticOrderItem.ts`
 - `src/models/LabResult.ts`
@@ -175,6 +208,17 @@ Result API + RBAC + Finalization/Correction Workflow
 - `src/app/api/diagnostic-orders/[orderId]/items/[itemId]/result/draft/route.ts`
 - `src/app/api/diagnostic-orders/[orderId]/items/[itemId]/result/finalize/route.ts`
 - `src/app/api/diagnostic-orders/[orderId]/items/[itemId]/result/corrections/route.ts`
+- `src/app/(admin)/diagnostics/page.tsx`
+- `src/app/(admin)/diagnostics/[id]/page.tsx`
+- `src/components/admin/DiagnosticOrdersList.tsx`
+- `src/components/admin/DiagnosticOrderDetail.tsx`
+- `src/components/admin/DiagnosticResultPanel.tsx`
+- `src/components/admin/LabResultEditor.tsx`
+- `src/components/admin/ImagingResultEditor.tsx`
+- `src/components/admin/ResultCorrectionDialog.tsx`
+- `src/components/admin/ResultHistory.tsx`
+- `src/components/admin/ResultRevisionView.tsx`
+- `src/components/admin/DiagnosticUI.tsx`
 - `src/lib/roles.ts`
 - `src/models/MedicalVisit.ts`
 - `src/models/Patient.ts`
@@ -183,8 +227,8 @@ Result API + RBAC + Finalization/Correction Workflow
 
 ## Deferred Work
 
-- Diagnostic UI
-- Result UI and reporting
+- Advanced Diagnostic dashboard and reporting
+- Diagnostic item workflow mutation controls
 - Result draft abandonment/revert policy
 - Result approval/publication policy
 - Diagnostic workforce/technician role model
@@ -227,6 +271,26 @@ version in the Phase 5 token correction. Finalization still requires terminal
 item status `COMPLETED` and is not subject to this overlap.
 
 ## Verification
+
+- Phase 6 focused ESLint passed for the new pages, Diagnostic/Result client
+  components, client API helper, navigation, role-route configuration, and
+  patient-detail navigation.
+- Phase 6 focused TypeScript validation passed with generated `.next` types and
+  unrelated routes excluded.
+- A Phase 6 mocked two-context client-helper check verified that both contexts
+  retained the same initial strong ETag, the first save replaced its token, the
+  second save received `409` with no automatic retry, reload obtained the new
+  token, and the next save sent that exact value in `If-Match`. It used no
+  database or clinical data.
+- Full `npm run lint` passed with no errors and the pre-existing unused-disable
+  warning in `src/lib/db.ts`.
+- The Phase 6 production build compiled successfully, then failed during
+  generated route type validation only because the pre-existing empty
+  `doctor-list` and `services` client pages are not modules. Next.js also
+  reported the existing `middleware` convention deprecation warning.
+- No browser session or live clinical-data mutation was performed. Interactive
+  LAB/Imaging, role, cancellation, and confirmation flows remain manual browser
+  verification work.
 
 - Phase 5 isolated service verification passed without connecting to or
   mutating MongoDB. It covered Lab/Imaging initial drafts, stored-type dispatch,
@@ -315,10 +379,11 @@ item status `COMPLETED` and is not subject to this overlap.
 
 ## Next Phase
 
-Diagnostic / Result UI Foundation
+Diagnostic workflow UI completion
 
 ## Recommended Next Step
 
-Build the first Diagnostic / Result UI against the explicit item-scoped APIs,
-including revision-token handling and read-only historical FINAL display,
-without weakening the documented clinical RBAC policy.
+Add focused item status-transition controls against the existing transition API
+without changing the state machine, performer semantics, parent aggregate, or
+Result lifecycle. Billing Architecture Foundation remains the alternative next
+phase if workflow controls are intentionally deferred.

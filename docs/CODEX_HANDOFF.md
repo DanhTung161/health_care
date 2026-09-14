@@ -2,7 +2,7 @@
 
 ## Current Phase
 
-Diagnostic API + RBAC Foundation
+Diagnostic Item Status-Transition API
 
 ## Completed
 
@@ -21,6 +21,13 @@ Diagnostic API + RBAC Foundation
   conflict handling.
 - Defined UTC date-only filters and timezone-explicit timestamp filters.
 - Added a reusable deterministic aggregate-order-status calculation.
+- Added the explicit item status-transition endpoint and strict input allowlist.
+- Added role- and Doctor-ownership-aware transition authorization with active
+  User revalidation.
+- Added server-derived workflow timestamps and audit actors while preserving
+  prior scheduling and execution history.
+- Added expected-status concurrency protection and transactional parent status
+  recomputation after every item transition.
 
 ## Architecture Decisions
 
@@ -53,15 +60,44 @@ Diagnostic API + RBAC Foundation
 - Aggregate status ignores cancelled items after the all-cancelled check, then
   resolves to completed, in progress, scheduled, or ordered based on remaining
   item progress. Parent status is never client-controlled.
+- Legal item transitions are `ORDERED -> SCHEDULED | IN_PROGRESS | CANCELLED`,
+  `SCHEDULED -> IN_PROGRESS | CANCELLED`, and `IN_PROGRESS -> COMPLETED |
+  CANCELLED`. `COMPLETED` and `CANCELLED` are terminal; repeated and backwards
+  transitions conflict.
+- The assigned `DOCTOR` may execute every legal workflow transition on their
+  own order.
+  `ADMIN` and `STAFF` may schedule or cancel, but may not start or complete and
+  are not treated as clinical performers. No technician role was invented.
+- Scheduling requires an explicit `Z` or numeric timezone offset. The API does
+  not reject past schedules, but a scheduled item cannot start early.
+- Entering `IN_PROGRESS` sets server `startedAt`, and completion sets server
+  `completedAt`. `updatedBy` is the authenticated workflow actor, while
+  `performedBy` means the actual diagnostic performer. Transitions do not infer
+  or fill `performedBy`; existing legitimate values are preserved until the
+  role/workforce model can identify performers reliably. Cancellation requires
+  a reason and sets server `cancelledAt` and `cancelledBy` without erasing
+  earlier workflow history.
+- Item `updatedBy` records every successful transition actor. Parent `updatedBy`
+  represents the latest successful child-workflow actor even if aggregate
+  status remains unchanged.
+- Item writes include the expected prior status. Stale, repeated, terminal, and
+  otherwise illegal transitions return `409` without overwriting audit data.
+- The conditional item update, sibling read, aggregate calculation, and parent
+  update share one Mongoose transaction. The parent aggregate cannot be set by
+  the client.
+- Diagnostic item `COMPLETED` currently means service-workflow completion only;
+  it does not imply result entry, approval, or publication.
 
 ## Important Files
 
 - `src/lib/diagnostic.ts`
 - `src/lib/diagnostic-orders.ts`
+- `src/lib/diagnostic-item-transitions.ts`
 - `src/models/DiagnosticOrder.ts`
 - `src/models/DiagnosticOrderItem.ts`
 - `src/app/api/diagnostic-orders/route.ts`
 - `src/app/api/diagnostic-orders/[id]/route.ts`
+- `src/app/api/diagnostic-orders/[orderId]/items/[itemId]/status/route.ts`
 - `src/lib/roles.ts`
 - `src/models/MedicalVisit.ts`
 - `src/models/Patient.ts`
@@ -71,10 +107,13 @@ Diagnostic API + RBAC Foundation
 ## Deferred Work
 
 - Diagnostic UI
-- Complete diagnostic item status-transition workflow
-- Lab/Imaging result workflow
+- Lab result workflow
+- Imaging result workflow
+- Result audit and correction rules
+- Service Catalog
 - Billing and Revenue integration
 - Shopify integration
+- MedicalVisit lifecycle decision
 
 ## Known Issues
 
@@ -84,7 +123,7 @@ failure in two empty client route files remains outside this phase.
 
 MedicalVisit has no OPEN/CLOSED/LOCKED lifecycle state. A future business
 decision must define whether new diagnostics are allowed for old or clinically
-finalized visits; this corrective pass intentionally does not invent a status
+finalized visits; this phase intentionally does not invent a status
 or age-based restriction.
 
 Before deploying the new unique index against an existing diagnostic-items
@@ -94,6 +133,31 @@ this pass does not delete or rewrite clinical records.
 
 ## Verification
 
+- The performer-audit correction verified that start/completion set their
+  server timestamps and `updatedBy` without inventing `performedBy`; an existing
+  legitimate performer remains unchanged and client-supplied performer data is
+  still rejected. Cancellation, state, aggregate, and stale-write behavior were
+  unchanged.
+- Phase 3 focused state-machine verification covered all seven allowed and all
+  specified rejected transitions, including terminal/repeated requests.
+- Focused input verification covered required cancellation reasons and lengths,
+  required timezone-explicit scheduling, and rejection of client audit fields.
+- Focused architecture inspection confirmed item/order linkage, active-role and
+  Doctor-ownership checks, conditional expected-status writes, and one-session
+  item/aggregate updates without a generic mutation endpoint.
+- Phase 3 focused ESLint passed for the transition route, transition service,
+  shared diagnostic helpers, and existing Diagnostic API service.
+- Phase 3 focused TypeScript validation passed with generated `.next` types
+  excluded so the two known empty client pages did not mask changed-file errors.
+- Full `npm run lint` passed with the pre-existing unused-disable warning in
+  `src/lib/db.ts` and no errors.
+- The production build compiled successfully, then failed at generated route
+  type validation only because the pre-existing empty `doctor-list` and
+  `services` client pages are not modules.
+- Transaction/concurrency behavior was verified without inserting clinical
+  data: the item update predicates on its expected current status, and the item
+  update, sibling read, aggregate calculation, and parent update share a single
+  session and transaction. No live race was created against application data.
 - Corrective-pass focused verification confirmed request-level duplicate-code
   rejection, the named compound unique index, absence of global service-code
   uniqueness, and same-code model validation across different order IDs.
@@ -103,30 +167,19 @@ this pass does not delete or rewrite clinical records.
 - Date verification confirmed exact UTC start/end boundaries for date-only
   values, correct offset-to-instant conversion, rejection of timezone-less
   timestamps, and rejection of impossible calendar dates.
-- Corrective-pass focused ESLint and TypeScript validation passed.
-- Focused ESLint passed for all Diagnostic API, business logic, role, and
-  aggregate-status files.
-- Focused TypeScript validation passed for the new routes, services, related
-  models, authentication, and role dependencies.
 - The focused business-logic audit passed for LAB/IMAGING requests, one and
   multiple items, validation, protected-field rejection, normalized duplicate
   codes, role permissions, list parsing, and all required aggregate-status
   combinations. No production database data was created.
-- Full `npm run lint` passed with one pre-existing unused-disable warning in
-  `src/lib/db.ts`.
-- `npm run build` compiled successfully, then failed its generated route type
-  validation because the pre-existing `src/app/(client)/doctor-list/page.tsx`
-  and `src/app/(client)/services/page.tsx` files are not modules.
 - The repository defines no automated test script; the focused audit used a
   temporary harness that was removed after execution.
 
 ## Next Phase
 
-Diagnostic Item Status-Transition API
+Lab / Imaging Result Foundation
 
 ## Recommended Next Step
 
-Implement explicit, role-aware item status-transition operations that set the
-required audit timestamps/actors and recompute parent status in the same
-transaction. This small server phase should precede workflow UI so the UI never
-needs an unsafe generic update endpoint.
+Design separate type-appropriate Lab and Imaging result records that reference
+`DiagnosticOrderItem`, including explicit result audit/correction semantics,
+without mixing result state into the now-stable service workflow prematurely.

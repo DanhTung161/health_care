@@ -81,10 +81,58 @@ scheduled item becomes `SCHEDULED`; remaining combinations become `ORDERED`.
 Cancelled items are ignored after the all-cancelled check. New orders are
 derived from their initial `ORDERED` items, and no API accepts parent status.
 
+## Item workflow transitions
+
+`PATCH /api/diagnostic-orders/[orderId]/items/[itemId]/status` is the only item
+workflow mutation endpoint. It accepts a strict transition-specific body and
+rejects arbitrary item, ownership, parent-status, timestamp, and audit fields.
+The legal transitions are:
+
+- `ORDERED -> SCHEDULED | IN_PROGRESS | CANCELLED`
+- `SCHEDULED -> IN_PROGRESS | CANCELLED`
+- `IN_PROGRESS -> COMPLETED | CANCELLED`
+- `COMPLETED` and `CANCELLED` are terminal
+
+Repeated, backwards, and direct `ORDERED/SCHEDULED -> COMPLETED` requests return
+`409 Conflict` without rewriting audit timestamps.
+
+The current role model has no Lab or Radiology technician role, so permissions
+remain deliberately narrow. The assigned `DOCTOR` may execute every legal
+workflow transition on their own order. `STAFF` and `ADMIN` may schedule or
+cancel any item, but may not start or complete it and are not recorded as
+clinical performers. Every mutation also revalidates that the authenticated
+User still exists, is active, and retains the authenticated role.
+
+Scheduling requires `scheduledAt` as an ISO timestamp with an explicit `Z` or
+numeric offset. Timezone-less timestamps are rejected, no clinic timezone is
+inferred, and past scheduling is not rejected without a business rule. A
+scheduled item cannot start before `scheduledAt`. Direct `ORDERED ->
+IN_PROGRESS` remains valid without a schedule.
+
+`startedAt` and `completedAt` use server time. Item `updatedBy` always records
+the authenticated workflow actor. `performedBy` has a different meaning: it is
+the actual person who performed the diagnostic service. Because the current
+role/workforce model cannot identify that person reliably, status transitions
+never infer or fill `performedBy`; any existing legitimate value is preserved.
+Performer identity remains deferred. Cancellation requires a trimmed reason of
+at most 1,000 characters and sets server-derived `cancelledAt`, `cancelledBy`,
+and `updatedBy`; prior scheduling/start/performer history is preserved.
+
+An item update uses its expected current status in the database predicate, so
+a stale transition cannot overwrite a newer state. A mismatch returns `409`.
+The conditional item update, sibling-status read, aggregate calculation, and
+parent status update all run in one MongoDB transaction. Parent `updatedBy`
+records the latest successful child-workflow actor on every transition, even
+when the aggregate status itself remains unchanged. Concurrent sibling updates
+therefore converge through transaction conflict handling rather than leaving
+the item and aggregate states intentionally inconsistent.
+
 Results are intentionally deferred. Future Lab results should use structured
 analyte/value/unit/reference-range data, while Imaging should use findings and
 impression structures. Those result records should reference the individual
-`DiagnosticOrderItem`, rather than adding one universal result field here.
+`DiagnosticOrderItem`, rather than adding one universal result field here. In
+this phase, `COMPLETED` means that the diagnostic service workflow completed;
+it does not imply that a result record has been entered, approved, or published.
 
 ## Future Billing boundary
 
@@ -95,9 +143,10 @@ from diagnostic clinical records.
 
 ## Deferred
 
-- Diagnostic item status-transition APIs and transactional aggregate updates
 - Lab and Imaging result models/workflows
+- Result audit, correction, approval, and publication rules
 - Diagnostic UI and dashboards
 - Service catalog and pricing
 - Billing/Revenue integration
 - Shopify integration
+- MedicalVisit lifecycle policy for old or clinically finalized visits

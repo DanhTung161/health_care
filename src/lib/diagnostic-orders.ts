@@ -7,6 +7,7 @@ import {
   isDiagnosticPriority,
   isDiagnosticStatus,
   isDiagnosticType,
+  parseDiagnosticTimestampWithTimezone,
   type DiagnosticPriority,
   type DiagnosticStatus,
   type DiagnosticType,
@@ -20,8 +21,6 @@ import User from "@/models/User";
 
 const SERVICE_CODE_PATTERN = /^[A-Z0-9]+(?:[-_.][A-Z0-9]+)*$/;
 const DATE_ONLY_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
-const ISO_TIMESTAMP_WITH_TIMEZONE_PATTERN =
-  /^(\d{4})-(\d{2})-(\d{2})T(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/;
 const MAX_ITEMS_PER_ORDER = 100;
 const DEFAULT_PAGE_SIZE = 20;
 const MAX_PAGE_SIZE = 100;
@@ -299,33 +298,37 @@ function parseDateFilter(
   }
 
   const dateOnlyMatch = DATE_ONLY_PATTERN.exec(normalized);
-  const timestampMatch = ISO_TIMESTAMP_WITH_TIMEZONE_PATTERN.exec(normalized);
-  const calendarMatch = dateOnlyMatch ?? timestampMatch;
-  if (!calendarMatch) {
+  const timestamp = dateOnlyMatch
+    ? null
+    : parseDiagnosticTimestampWithTimezone(normalized);
+  if (!dateOnlyMatch && !timestamp) {
     return new DiagnosticOrderError(
       `Invalid ${label}; use YYYY-MM-DD (UTC) or an ISO timestamp with timezone`,
       400,
     );
   }
 
-  const [, yearText, monthText, dayText] = calendarMatch;
-  const year = Number(yearText);
-  const month = Number(monthText);
-  const day = Number(dayText);
-  const calendarDate = new Date(Date.UTC(year, month - 1, day));
-  if (
-    calendarDate.getUTCFullYear() !== year ||
-    calendarDate.getUTCMonth() !== month - 1 ||
-    calendarDate.getUTCDate() !== day
-  ) {
-    return new DiagnosticOrderError(`Invalid ${label}`, 400);
+  if (dateOnlyMatch) {
+    const [, yearText, monthText, dayText] = dateOnlyMatch;
+    const year = Number(yearText);
+    const month = Number(monthText);
+    const day = Number(dayText);
+    const calendarDate = new Date(Date.UTC(year, month - 1, day));
+    if (
+      calendarDate.getUTCFullYear() !== year ||
+      calendarDate.getUTCMonth() !== month - 1 ||
+      calendarDate.getUTCDate() !== day
+    ) {
+      return new DiagnosticOrderError(`Invalid ${label}`, 400);
+    }
   }
 
-  const date = new Date(
-    dateOnlyMatch
-      ? `${normalized}T${endOfDay ? "23:59:59.999" : "00:00:00.000"}Z`
-      : normalized,
-  );
+  const date = dateOnlyMatch
+    ? new Date(
+        `${normalized}T${endOfDay ? "23:59:59.999" : "00:00:00.000"}Z`,
+      )
+    : timestamp;
+  if (!date) return new DiagnosticOrderError(`Invalid ${label}`, 400);
   if (Number.isNaN(date.getTime())) {
     return new DiagnosticOrderError(`Invalid ${label}`, 400);
   }

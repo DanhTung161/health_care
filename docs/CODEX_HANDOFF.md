@@ -2,7 +2,7 @@
 
 ## Current Phase
 
-Diagnostic / Result UI Foundation
+Diagnostic Item Workflow UI Completion
 
 ## Completed
 
@@ -57,6 +57,16 @@ Diagnostic / Result UI Foundation
   assigned `DOCTOR` sees clinical Result mutation actions.
 - Added a small client API helper that preserves HTTP status, JSON errors, and
   the exact strong ETag required for revision-safe edit/finalize operations.
+- Added schedule, direct-start, completion, and cancellation controls inside
+  each Diagnostic Order detail item card.
+- Added dedicated schedule and cancellation dialogs with local-time-to-UTC ISO
+  conversion and the shared cancellation-reason length limit.
+- Added exact role/ownership/state action visibility, per-item pending/error/
+  success state, and explicit completion/cancellation messaging.
+- Added stale-transition `409` handling with no retry and an explicit full-order
+  reload action.
+- Added server-response merging for updated item and parent aggregate state, and
+  synchronized that item status into the existing Result panel permissions.
 
 ## Architecture Decisions
 
@@ -184,6 +194,27 @@ Diagnostic / Result UI Foundation
 - Mutation visibility requires both role `DOCTOR` and exact ordering-Doctor ID
   ownership. `ADMIN`, `STAFF`, and an unrelated Doctor receive no clinical
   mutation controls, while server authorization remains authoritative.
+- Item workflow controls remain separate from Result controls on the existing
+  order-detail item card. They derive visible actions from the shared state
+  machine, role, and exact ordering-Doctor ID; the server rechecks all rules.
+- Workflow mutations are never optimistic. Successful responses supply both the
+  updated item state and parent aggregate status, which are merged without a
+  client aggregate calculation. A stale conflict instead requires refetching
+  the full order before action visibility is recalculated.
+- A `datetime-local` scheduling value represents browser-local time. Calendar
+  components are validated and the local instant is converted with
+  `toISOString()`; no `Z` is manually appended and no clinic timezone or future
+  scheduling rule is invented.
+- Transition requests contain only the target `status` and its applicable
+  scheduling/cancellation input. The endpoint accepts no expected-source field;
+  its transaction re-reads the item and conditionally writes using the stored
+  current status. State-change `409` responses are not retried.
+- Starting and completion never send or infer `performedBy`; all workflow audit
+  timestamps and identities remain server-derived. Item completion remains
+  independent from Result finalization.
+- Updated item status is authoritative for the mounted Result panel.
+  `IN_PROGRESS`, `COMPLETED`, and `CANCELLED` immediately update create,
+  finalize, and read-only eligibility without changing Result APIs or lifecycle.
 
 ## Important Files
 
@@ -194,6 +225,7 @@ Diagnostic / Result UI Foundation
 - `src/lib/diagnostic-result-service.ts`
 - `src/lib/diagnostic-result-route.ts`
 - `src/lib/diagnostic-client.ts`
+- `src/lib/diagnostic-workflow-ui.ts`
 - `src/models/DiagnosticOrder.ts`
 - `src/models/DiagnosticOrderItem.ts`
 - `src/models/LabResult.ts`
@@ -219,6 +251,9 @@ Diagnostic / Result UI Foundation
 - `src/components/admin/ResultHistory.tsx`
 - `src/components/admin/ResultRevisionView.tsx`
 - `src/components/admin/DiagnosticUI.tsx`
+- `src/components/admin/DiagnosticItemWorkflowActions.tsx`
+- `src/components/admin/DiagnosticScheduleDialog.tsx`
+- `src/components/admin/DiagnosticCancellationDialog.tsx`
 - `src/lib/roles.ts`
 - `src/models/MedicalVisit.ts`
 - `src/models/Patient.ts`
@@ -228,7 +263,7 @@ Diagnostic / Result UI Foundation
 ## Deferred Work
 
 - Advanced Diagnostic dashboard and reporting
-- Diagnostic item workflow mutation controls
+- Diagnostic scheduling calendar
 - Result draft abandonment/revert policy
 - Result approval/publication policy
 - Diagnostic workforce/technician role model
@@ -271,6 +306,25 @@ version in the Phase 5 token correction. Finalization still requires terminal
 item status `COMPLETED` and is not subject to this overlap.
 
 ## Verification
+
+- Phase 7 focused workflow verification passed without database access. It
+  covered the full role/state action matrix, unrelated-Doctor denial, valid
+  browser-local timestamp conversion and invalid inputs, exact transition body
+  fields, cancellation input, `409` propagation with no retry, server-owned
+  aggregate use, absence of performer/audit fields, and Result-status
+  synchronization wiring.
+- Phase 7 focused ESLint and focused TypeScript validation passed for the
+  workflow helper, dialogs/actions, client helper, order detail, Result panel,
+  and synchronized Result editors.
+- Full `npm run lint` passed with no errors and the pre-existing unused-disable
+  warning in `src/lib/db.ts`.
+- The Phase 7 production build compiled successfully, then failed during
+  generated route type validation only because the pre-existing empty
+  `doctor-list` and `services` client pages are not modules. Next.js also
+  reported the existing `middleware` convention deprecation warning.
+- No browser session or live clinical-data mutation was performed. Interactive
+  multi-item aggregate, role, scheduling, cancellation, and Result workflow
+  scenarios remain manual browser verification work.
 
 - Phase 6 focused ESLint passed for the new pages, Diagnostic/Result client
   components, client API helper, navigation, role-route configuration, and
@@ -379,11 +433,11 @@ item status `COMPLETED` and is not subject to this overlap.
 
 ## Next Phase
 
-Diagnostic workflow UI completion
+Diagnostic Billing Integration Architecture
 
 ## Recommended Next Step
 
-Add focused item status-transition controls against the existing transition API
-without changing the state machine, performer semantics, parent aggregate, or
-Result lifecycle. Billing Architecture Foundation remains the alternative next
-phase if workflow controls are intentionally deferred.
+Define how individual `DiagnosticOrderItem` service snapshots integrate with
+the existing Billing domain without placing prices or settlement state in
+clinical Diagnostic/Result records. Do not begin that work without a dedicated
+scope and repository audit.

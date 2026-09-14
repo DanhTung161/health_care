@@ -304,6 +304,54 @@ allows any returned revision to be inspected without making an old revision
 editable. Cancelled items retain readable Result/history data but expose no
 create, edit, finalize, or correction controls.
 
+## Item workflow UI
+
+Workflow controls live beside each item status and timestamps on the existing
+Diagnostic Order detail page; they are not part of the clinical Result panel.
+Actions are derived from the shared item state machine plus the current role and
+exact ordering-Doctor ID. The visible matrix is:
+
+| Actor | Schedule | Start | Complete | Cancel |
+| --- | --- | --- | --- | --- |
+| `ADMIN` | Yes | No | No | Yes |
+| `STAFF` | Yes | No | No | Yes |
+| Assigned `DOCTOR` | Yes | Yes | Yes | Yes |
+| Unrelated `DOCTOR` | No | No | No | No |
+
+Each permission is further limited by the legal current-state transition.
+`ORDERED` offers schedule, direct start, and cancel where authorized;
+`SCHEDULED` offers start and cancel; `IN_PROGRESS` offers complete and cancel;
+terminal items offer no mutations. The backend remains authoritative.
+
+Scheduling uses a native `datetime-local` input interpreted in the browser
+device's local timezone. The client validates its calendar components and
+converts the represented local instant with `Date#toISOString()` before sending
+the timezone-explicit `scheduledAt`. It does not append `Z`, infer a clinic
+timezone, or add future-date/clinic-hours rules that the API does not enforce.
+Cancellation uses a dedicated dialog, requires a trimmed reason, and shares the
+server's 1,000-character limit.
+
+The transition client sends only the target `status` plus `scheduledAt` for
+scheduling or `cancellationReason` for cancellation. The current endpoint does
+not accept a client source-status field: it loads the current item in the
+transaction and includes that stored status in its conditional update. The UI
+does not retry `409` responses. State-change conflicts close any now-invalid
+dialog, show a specific stale-state message, and require an explicit order
+reload before actions are recalculated. Other business conflicts, including an
+attempt to start before `scheduledAt`, display the server's message unchanged.
+
+After a successful transition, the detail view merges the response's updated
+item and parent order status. It never calculates the aggregate in React. The
+new item status is also passed to the existing Result panel: `IN_PROGRESS`
+enables allowed draft creation, `COMPLETED` enables allowed Result finalization,
+and `CANCELLED` leaves Result/history readable but makes any retained editor
+read-only. Completing an item never finalizes its Result.
+
+The client never sends `startedAt`, `completedAt`, cancellation audit fields,
+`updatedBy`, or `performedBy`. `performedBy` continues to mean the actual
+diagnostic performer and remains unchanged unless a future reliable workforce
+model can supply that identity.
+
 A lower-severity concurrency edge remains when Result creation or draft editing
 on an `IN_PROGRESS` item overlaps the separate item transition to `CANCELLED`.
 The Result transaction reads but does not update the item document, while the

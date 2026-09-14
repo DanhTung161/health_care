@@ -12,6 +12,8 @@ export const DIAGNOSTIC_STATUSES = [
 
 export type DiagnosticStatus = (typeof DIAGNOSTIC_STATUSES)[number];
 
+export const DIAGNOSTIC_CANCELLATION_REASON_MAX_LENGTH = 1_000;
+
 const diagnosticItemTransitions: Record<
   DiagnosticStatus,
   readonly DiagnosticStatus[]

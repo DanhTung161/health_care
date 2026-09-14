@@ -13,12 +13,14 @@ const textareaClassName =
 export default function ImagingResultEditor({
   revision,
   isSaving,
+  isReadOnly,
   errorMessage,
   onSave,
   onCancel,
 }: {
   revision?: ImagingResultRevisionView;
   isSaving: boolean;
+  isReadOnly: boolean;
   errorMessage: string;
   onSave: (payload: ImagingDraftPayload) => Promise<void>;
   onCancel: () => void;
@@ -33,6 +35,7 @@ export default function ImagingResultEditor({
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (isReadOnly) return;
     await onSave({
       findings: findings.trim(),
       impression: impression.trim(),
@@ -75,12 +78,22 @@ export default function ImagingResultEditor({
           </button>
         </div>
 
+        {isReadOnly && (
+          <p
+            role="status"
+            className="mb-4 rounded-xl bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700"
+          >
+            The item workflow no longer permits editing. Your local values remain visible but cannot be submitted.
+          </p>
+        )}
+
         <div className="grid gap-4">
           <label className="flex flex-col gap-2 text-sm font-medium text-slate-700">
             Findings
             <textarea
               rows={7}
               value={findings}
+              disabled={isReadOnly}
               maxLength={DIAGNOSTIC_RESULT_LIMITS.imagingFindings}
               onChange={(event) => setFindings(event.target.value)}
               className={textareaClassName}
@@ -91,6 +104,7 @@ export default function ImagingResultEditor({
             <textarea
               rows={5}
               value={impression}
+              disabled={isReadOnly}
               maxLength={DIAGNOSTIC_RESULT_LIMITS.imagingImpression}
               onChange={(event) => setImpression(event.target.value)}
               className={textareaClassName}
@@ -102,6 +116,7 @@ export default function ImagingResultEditor({
               <textarea
                 rows={3}
                 value={technique}
+                disabled={isReadOnly}
                 maxLength={DIAGNOSTIC_RESULT_LIMITS.imagingOptionalSection}
                 onChange={(event) => setTechnique(event.target.value)}
                 className={textareaClassName}
@@ -112,6 +127,7 @@ export default function ImagingResultEditor({
               <textarea
                 rows={3}
                 value={comparison}
+                disabled={isReadOnly}
                 maxLength={DIAGNOSTIC_RESULT_LIMITS.imagingOptionalSection}
                 onChange={(event) => setComparison(event.target.value)}
                 className={textareaClassName}
@@ -123,6 +139,7 @@ export default function ImagingResultEditor({
             <textarea
               rows={3}
               value={recommendation}
+              disabled={isReadOnly}
               maxLength={DIAGNOSTIC_RESULT_LIMITS.imagingOptionalSection}
               onChange={(event) => setRecommendation(event.target.value)}
               className={textareaClassName}
@@ -146,7 +163,7 @@ export default function ImagingResultEditor({
           </button>
           <button
             type="submit"
-            disabled={isSaving}
+            disabled={isSaving || isReadOnly}
             className="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {isSaving ? "Saving draft…" : "Save complete draft"}

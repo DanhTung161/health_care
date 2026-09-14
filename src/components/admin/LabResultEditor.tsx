@@ -39,12 +39,14 @@ function initialRows(revision?: LabResultRevisionView): LabAnalyteEditorRow[] {
 export default function LabResultEditor({
   revision,
   isSaving,
+  isReadOnly,
   errorMessage,
   onSave,
   onCancel,
 }: {
   revision?: LabResultRevisionView;
   isSaving: boolean;
+  isReadOnly: boolean;
   errorMessage: string;
   onSave: (payload: LabDraftPayload) => Promise<void>;
   onCancel: () => void;
@@ -86,6 +88,7 @@ export default function LabResultEditor({
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (isReadOnly) return;
     await onSave({
       analytes: rows.map((row) => ({
         ...(row.code.trim() ? { code: row.code.trim() } : {}),
@@ -134,6 +137,15 @@ export default function LabResultEditor({
           </button>
         </div>
 
+        {isReadOnly && (
+          <p
+            role="status"
+            className="mb-4 rounded-xl bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700"
+          >
+            The item workflow no longer permits editing. Your local values remain visible but cannot be submitted.
+          </p>
+        )}
+
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <div>
             <p className="text-sm font-semibold text-slate-800">Analytes</p>
@@ -144,7 +156,7 @@ export default function LabResultEditor({
           <button
             type="button"
             onClick={addRow}
-            disabled={isSaving || rows.length >= DIAGNOSTIC_RESULT_LIMITS.maxLabAnalytes}
+            disabled={isSaving || isReadOnly || rows.length >= DIAGNOSTIC_RESULT_LIMITS.maxLabAnalytes}
             className="rounded-lg border border-blue-200 px-3 py-2 text-xs font-semibold text-blue-600 hover:bg-blue-50 disabled:opacity-50"
           >
             + Add analyte
@@ -166,6 +178,7 @@ export default function LabResultEditor({
                     Code
                     <input
                       value={row.code}
+                      disabled={isReadOnly}
                       maxLength={DIAGNOSTIC_RESULT_LIMITS.analyteCode}
                       onChange={(event) => updateRow(row.key, "code", event.target.value)}
                       className={inputClassName}
@@ -176,6 +189,7 @@ export default function LabResultEditor({
                     <input
                       required
                       value={row.name}
+                      disabled={isReadOnly}
                       maxLength={DIAGNOSTIC_RESULT_LIMITS.analyteName}
                       onChange={(event) => updateRow(row.key, "name", event.target.value)}
                       className={inputClassName}
@@ -186,6 +200,7 @@ export default function LabResultEditor({
                     <input
                       required
                       value={row.value}
+                      disabled={isReadOnly}
                       maxLength={DIAGNOSTIC_RESULT_LIMITS.analyteValue}
                       onChange={(event) => updateRow(row.key, "value", event.target.value)}
                       className={inputClassName}
@@ -195,6 +210,7 @@ export default function LabResultEditor({
                     Unit
                     <input
                       value={row.unit}
+                      disabled={isReadOnly}
                       maxLength={DIAGNOSTIC_RESULT_LIMITS.analyteUnit}
                       onChange={(event) => updateRow(row.key, "unit", event.target.value)}
                       className={inputClassName}
@@ -204,6 +220,7 @@ export default function LabResultEditor({
                     Reference range
                     <input
                       value={row.referenceRange}
+                      disabled={isReadOnly}
                       maxLength={DIAGNOSTIC_RESULT_LIMITS.referenceRange}
                       onChange={(event) => updateRow(row.key, "referenceRange", event.target.value)}
                       className={inputClassName}
@@ -213,6 +230,7 @@ export default function LabResultEditor({
                     Interpretation
                     <select
                       value={row.interpretation}
+                      disabled={isReadOnly}
                       onChange={(event) =>
                         updateRow(
                           row.key,
@@ -231,7 +249,7 @@ export default function LabResultEditor({
                 <button
                   type="button"
                   onClick={() => setRows((current) => current.filter((item) => item.key !== row.key))}
-                  disabled={isSaving}
+                  disabled={isSaving || isReadOnly}
                   className="mt-3 text-xs font-semibold text-rose-600 hover:underline disabled:opacity-50"
                 >
                   Remove analyte
@@ -250,6 +268,7 @@ export default function LabResultEditor({
           <textarea
             rows={4}
             value={clinicalComment}
+            disabled={isReadOnly}
             maxLength={DIAGNOSTIC_RESULT_LIMITS.clinicalComment}
             onChange={(event) => setClinicalComment(event.target.value)}
             className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10"
@@ -272,7 +291,7 @@ export default function LabResultEditor({
           </button>
           <button
             type="submit"
-            disabled={isSaving}
+            disabled={isSaving || isReadOnly}
             className="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {isSaving ? "Saving draft…" : "Save complete draft"}

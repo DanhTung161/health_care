@@ -5,6 +5,7 @@ import type { AuthenticatedUser } from "@/lib/auth";
 import {
   calculateDiagnosticOrderStatus,
   canTransitionDiagnosticItemStatus,
+  DIAGNOSTIC_CANCELLATION_REASON_MAX_LENGTH,
   isDiagnosticStatus,
   parseDiagnosticTimestampWithTimezone,
   type DiagnosticStatus,
@@ -102,7 +103,10 @@ export function parseDiagnosticItemTransitionInput(
       };
     }
     const cancellationReason = value.cancellationReason.trim();
-    if (!cancellationReason || cancellationReason.length > 1_000) {
+    if (
+      !cancellationReason ||
+      cancellationReason.length > DIAGNOSTIC_CANCELLATION_REASON_MAX_LENGTH
+    ) {
       return {
         error: new DiagnosticOrderError(
           "Cancellation reason must be between 1 and 1000 characters",

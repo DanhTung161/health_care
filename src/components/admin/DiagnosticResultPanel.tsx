@@ -72,9 +72,15 @@ export default function DiagnosticResultPanel({
   const [successMessage, setSuccessMessage] = useState("");
   const [hasConflict, setHasConflict] = useState(false);
   const [historyVersion, setHistoryVersion] = useState(0);
+  const [itemVersionAtResultLoad, setItemVersionAtResultLoad] = useState<
+    string | null
+  >(null);
 
   const state = resultState(view, loadState);
-  const effectiveItemStatus = view?.item.status ?? item.status;
+  const effectiveItemStatus =
+    view && itemVersionAtResultLoad === item.updatedAt
+      ? view.item.status
+      : item.status;
   const itemAllowsDraft =
     effectiveItemStatus === "IN_PROGRESS" || effectiveItemStatus === "COMPLETED";
   const canCreate = canMutate && itemAllowsDraft && loadState === "missing";
@@ -96,6 +102,7 @@ export default function DiagnosticResultPanel({
     view.result.currentFinalVersion === view.result.latestRevisionVersion;
 
   function acceptResult(result: { data: DiagnosticResultView; etag: string }) {
+    setItemVersionAtResultLoad(item.updatedAt);
     setView(result.data);
     setEtag(result.etag);
     setLoadState("ready");
@@ -146,6 +153,13 @@ export default function DiagnosticResultPanel({
   }
 
   async function saveDraft(payload: DiagnosticDraftPayload) {
+    const maySave = loadState === "missing" ? canCreate : canEdit;
+    if (!maySave) {
+      setErrorMessage(
+        "The item workflow no longer permits Result editing. Reload the latest Result if another user changed it.",
+      );
+      return;
+    }
     setIsMutating(true);
     setErrorMessage("");
     setSuccessMessage("");
@@ -418,6 +432,7 @@ export default function DiagnosticResultPanel({
               : undefined
           }
           isSaving={isMutating}
+          isReadOnly={!itemAllowsDraft}
           errorMessage={errorMessage}
           onSave={(payload: LabDraftPayload) => saveDraft(payload)}
           onCancel={() => setIsEditing(false)}
@@ -431,6 +446,7 @@ export default function DiagnosticResultPanel({
               : undefined
           }
           isSaving={isMutating}
+          isReadOnly={!itemAllowsDraft}
           errorMessage={errorMessage}
           onSave={(payload: ImagingDraftPayload) => saveDraft(payload)}
           onCancel={() => setIsEditing(false)}

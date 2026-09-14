@@ -48,6 +48,22 @@ export interface DiagnosticOrderDetail extends DiagnosticOrderSummary {
   items: DiagnosticOrderItemView[];
 }
 
+export type DiagnosticItemTransitionPayload =
+  | { status: "SCHEDULED"; scheduledAt: string }
+  | { status: "IN_PROGRESS" | "COMPLETED" }
+  | { status: "CANCELLED"; cancellationReason: string };
+
+export interface DiagnosticItemTransitionResult {
+  order: Pick<
+    DiagnosticOrderSummary,
+    "id" | "status" | "updatedBy" | "updatedAt"
+  >;
+  item: Omit<
+    DiagnosticOrderItemView,
+    "serviceCode" | "serviceName" | "notes"
+  >;
+}
+
 export interface DiagnosticOrderListResponse {
   items: DiagnosticOrderSummary[];
   pagination: {
@@ -239,6 +255,22 @@ export async function fetchDiagnosticOrder(
 ): Promise<DiagnosticOrderDetail> {
   const { data } = await requestData<DiagnosticOrderDetail>(
     `/api/diagnostic-orders/${orderId}`,
+  );
+  return data;
+}
+
+export async function transitionDiagnosticItem(
+  orderId: string,
+  itemId: string,
+  payload: DiagnosticItemTransitionPayload,
+): Promise<DiagnosticItemTransitionResult> {
+  const { data } = await requestData<DiagnosticItemTransitionResult>(
+    `/api/diagnostic-orders/${orderId}/items/${itemId}/status`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    },
   );
   return data;
 }

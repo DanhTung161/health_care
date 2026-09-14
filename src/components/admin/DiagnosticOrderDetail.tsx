@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import DiagnosticItemWorkflowActions from "@/components/admin/DiagnosticItemWorkflowActions";
 import DiagnosticResultPanel from "@/components/admin/DiagnosticResultPanel";
 import {
   DiagnosticStatusBadge,
@@ -12,6 +13,7 @@ import {
 import {
   DiagnosticClientError,
   fetchDiagnosticOrder,
+  type DiagnosticItemTransitionResult,
   type DiagnosticOrderDetail,
 } from "@/lib/diagnostic-client";
 import type { Role } from "@/lib/roles";
@@ -36,6 +38,28 @@ export default function DiagnosticOrderDetailView({
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
   const [reloadVersion, setReloadVersion] = useState(0);
+
+  async function reloadOrder(): Promise<void> {
+    const data = await fetchDiagnosticOrder(orderId);
+    setOrder(data);
+  }
+
+  function applyTransition(result: DiagnosticItemTransitionResult) {
+    setOrder((current) => {
+      if (!current || current.id !== result.order.id) return current;
+      return {
+        ...current,
+        status: result.order.status,
+        updatedBy: result.order.updatedBy,
+        updatedAt: result.order.updatedAt,
+        items: current.items.map((existing) =>
+          existing.id === result.item.id
+            ? { ...existing, ...result.item }
+            : existing,
+        ),
+      };
+    });
+  }
 
   useEffect(() => {
     let ignore = false;
@@ -96,6 +120,7 @@ export default function DiagnosticOrderDetailView({
   const canMutateResults =
     currentUser.role === "DOCTOR" &&
     order.orderedByDoctor.id === currentUser.id;
+  const isAssignedDoctor = order.orderedByDoctor.id === currentUser.id;
 
   return (
     <div className="mx-auto max-w-[1300px]">
@@ -193,6 +218,15 @@ export default function DiagnosticOrderDetailView({
                 <ItemFact label="Item notes" value={item.notes || "—"} />
                 <ItemFact label="Updated" value={formatDiagnosticDate(item.updatedAt)} />
               </dl>
+
+              <DiagnosticItemWorkflowActions
+                orderId={order.id}
+                item={item}
+                currentRole={currentUser.role}
+                isAssignedDoctor={isAssignedDoctor}
+                onTransitionApplied={applyTransition}
+                onReload={reloadOrder}
+              />
 
               <DiagnosticResultPanel
                 key={item.id}

@@ -123,6 +123,10 @@ DiagnosticOrderItemSchema.pre("validate", function validateStatusAudit() {
 });
 
 DiagnosticOrderItemSchema.index({ diagnosticOrderId: 1, createdAt: 1 });
+DiagnosticOrderItemSchema.index(
+  { diagnosticOrderId: 1, serviceCode: 1 },
+  { unique: true, name: "unique_service_code_per_diagnostic_order" },
+);
 DiagnosticOrderItemSchema.index({ type: 1, status: 1, createdAt: -1 });
 DiagnosticOrderItemSchema.index({ serviceCode: 1, createdAt: -1 });
 

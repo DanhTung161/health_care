@@ -38,3 +38,36 @@ export function isDiagnosticPriority(
     DIAGNOSTIC_PRIORITIES.includes(value as DiagnosticPriority)
   );
 }
+
+export function calculateDiagnosticOrderStatus(
+  itemStatuses: readonly DiagnosticStatus[],
+): DiagnosticStatus {
+  if (!itemStatuses.length) {
+    throw new Error("A diagnostic order requires at least one item status");
+  }
+  if (itemStatuses.some((status) => !isDiagnosticStatus(status))) {
+    throw new Error("Diagnostic order contains an invalid item status");
+  }
+
+  if (itemStatuses.every((status) => status === "CANCELLED")) {
+    return "CANCELLED";
+  }
+
+  const activeStatuses = itemStatuses.filter(
+    (status) => status !== "CANCELLED",
+  );
+  if (activeStatuses.every((status) => status === "COMPLETED")) {
+    return "COMPLETED";
+  }
+  if (
+    activeStatuses.some(
+      (status) => status === "IN_PROGRESS" || status === "COMPLETED",
+    )
+  ) {
+    return "IN_PROGRESS";
+  }
+  if (activeStatuses.some((status) => status === "SCHEDULED")) {
+    return "SCHEDULED";
+  }
+  return "ORDERED";
+}

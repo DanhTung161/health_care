@@ -9,7 +9,13 @@ export const roleLandingPage: Record<Role, string> = {
 };
 
 export const allowedRoutePrefixes: Record<Exclude<Role, "ADMIN">, string[]> = {
-  DOCTOR: ["/appointments", "/patients", "/api/appointments", "/api/patients"],
+  DOCTOR: [
+    "/appointments",
+    "/patients",
+    "/api/appointments",
+    "/api/patients",
+    "/api/diagnostic-orders",
+  ],
   STAFF: [
     "/appointments",
     "/patients",
@@ -17,6 +23,7 @@ export const allowedRoutePrefixes: Record<Exclude<Role, "ADMIN">, string[]> = {
     "/api/appointments",
     "/api/patients",
     "/api/billing",
+    "/api/diagnostic-orders",
   ],
 };
 

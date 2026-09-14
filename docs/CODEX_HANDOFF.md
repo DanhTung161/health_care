@@ -2,7 +2,7 @@
 
 ## Current Phase
 
-Diagnostic Architecture Foundation
+Diagnostic API + RBAC Foundation
 
 ## Completed
 
@@ -13,6 +13,14 @@ Diagnostic Architecture Foundation
 - Added historical service and ordering-doctor snapshots, status audit fields,
   validation, and query indexes.
 - Documented domain boundaries and future extension points.
+- Added atomic DiagnosticOrder plus DiagnosticOrderItem creation.
+- Added safe single-order and bounded filtered list endpoints.
+- Added server-derived Patient, Doctor, and audit ownership with role checks.
+- Added normalized input validation and per-request duplicate-code rejection.
+- Added database-level per-order service-code uniqueness and safe duplicate-key
+  conflict handling.
+- Defined UTC date-only filters and timezone-explicit timestamp filters.
+- Added a reusable deterministic aggregate-order-status calculation.
 
 ## Architecture Decisions
 
@@ -29,12 +37,32 @@ Diagnostic Architecture Foundation
 - Future Lab and Imaging results should use type-specific records referencing a
   `DiagnosticOrderItem`.
 - Future Billing should reference `DiagnosticOrderItem`, not the parent order.
+- Only the active Doctor assigned to the MedicalVisit can create an order.
+  `patientId`, ordering Doctor, Doctor snapshot, item type, and audit fields are
+  derived on the server.
+- `ADMIN` and `STAFF` can read/list all diagnostic orders. `DOCTOR` can
+  read/list only orders matching their authenticated identity.
+- Parent and items are created through Mongoose `withTransaction`; there is no
+  partial-write fallback for MongoDB deployments without transaction support.
+- Duplicate normalized service codes are rejected within one request, without
+  preventing the same service from being ordered again later.
+- A compound unique `(diagnosticOrderId, serviceCode)` index enforces the same
+  rule for future model paths; duplicate-key errors become safe `409` responses.
+- Date-only list filters use UTC day boundaries. Timestamp filters require an
+  explicit `Z` or numeric timezone offset because no clinic timezone exists.
+- Aggregate status ignores cancelled items after the all-cancelled check, then
+  resolves to completed, in progress, scheduled, or ordered based on remaining
+  item progress. Parent status is never client-controlled.
 
 ## Important Files
 
 - `src/lib/diagnostic.ts`
+- `src/lib/diagnostic-orders.ts`
 - `src/models/DiagnosticOrder.ts`
 - `src/models/DiagnosticOrderItem.ts`
+- `src/app/api/diagnostic-orders/route.ts`
+- `src/app/api/diagnostic-orders/[id]/route.ts`
+- `src/lib/roles.ts`
 - `src/models/MedicalVisit.ts`
 - `src/models/Patient.ts`
 - `src/models/User.ts`
@@ -42,39 +70,63 @@ Diagnostic Architecture Foundation
 
 ## Deferred Work
 
-- Diagnostic API/business workflow
-- RBAC enforcement and ownership validation
 - Diagnostic UI
+- Complete diagnostic item status-transition workflow
 - Lab/Imaging result workflow
 - Billing and Revenue integration
 - Shopify integration
 
 ## Known Issues
 
-The working tree already contained uncommitted Billing audit changes before
-this phase; preserve and review them separately. No diagnostic-domain issue is
-known from this phase.
+MongoDB transactions require a replica set or sharded deployment. The API does
+not weaken atomicity for standalone MongoDB. The pre-existing production build
+failure in two empty client route files remains outside this phase.
+
+MedicalVisit has no OPEN/CLOSED/LOCKED lifecycle state. A future business
+decision must define whether new diagnostics are allowed for old or clinically
+finalized visits; this corrective pass intentionally does not invent a status
+or age-based restriction.
+
+Before deploying the new unique index against an existing diagnostic-items
+collection, verify that no duplicate `(diagnosticOrderId, serviceCode)` pairs
+already exist. Index creation will fail safely if legacy duplicates are present;
+this pass does not delete or rewrite clinical records.
 
 ## Verification
 
-- Runtime Mongoose schema audit passed for defaults, normalization, references,
-  indexes, invalid diagnostic types, status audit requirements, and timestamp
-  ordering.
-- Focused TypeScript check passed for the diagnostic constants and both models.
-- Focused ESLint check passed for the diagnostic constants and both models.
-- Full `npm run lint` passed with one pre-existing warning in `src/lib/db.ts`.
-- `npm run build` compiled successfully, then failed Next.js route type
+- Corrective-pass focused verification confirmed request-level duplicate-code
+  rejection, the named compound unique index, absence of global service-code
+  uniqueness, and same-code model validation across different order IDs.
+- Duplicate-key recognition maps MongoDB code `11000` to the diagnostic `409`
+  conflict path. The real application database was not mutated; index behavior
+  was verified through Mongoose schema metadata rather than inserting records.
+- Date verification confirmed exact UTC start/end boundaries for date-only
+  values, correct offset-to-instant conversion, rejection of timezone-less
+  timestamps, and rejection of impossible calendar dates.
+- Corrective-pass focused ESLint and TypeScript validation passed.
+- Focused ESLint passed for all Diagnostic API, business logic, role, and
+  aggregate-status files.
+- Focused TypeScript validation passed for the new routes, services, related
+  models, authentication, and role dependencies.
+- The focused business-logic audit passed for LAB/IMAGING requests, one and
+  multiple items, validation, protected-field rejection, normalized duplicate
+  codes, role permissions, list parsing, and all required aggregate-status
+  combinations. No production database data was created.
+- Full `npm run lint` passed with one pre-existing unused-disable warning in
+  `src/lib/db.ts`.
+- `npm run build` compiled successfully, then failed its generated route type
   validation because the pre-existing `src/app/(client)/doctor-list/page.tsx`
-  and `src/app/(client)/services/page.tsx` files are not modules. This is
-  outside the diagnostic foundation scope.
-- The repository defines no automated test script.
+  and `src/app/(client)/services/page.tsx` files are not modules.
+- The repository defines no automated test script; the focused audit used a
+  temporary harness that was removed after execution.
 
 ## Next Phase
 
-Diagnostic API + RBAC
+Diagnostic Item Status-Transition API
 
 ## Recommended Next Step
 
-Implement one transactional create-order endpoint that loads the MedicalVisit,
-derives Patient and ordering-doctor ownership from authenticated server data,
-creates at least one item, and never accepts audit identities from the client.
+Implement explicit, role-aware item status-transition operations that set the
+required audit timestamps/actors and recompute parent status in the same
+transaction. This small server phase should precede workflow UI so the UI never
+needs an unsafe generic update endpoint.

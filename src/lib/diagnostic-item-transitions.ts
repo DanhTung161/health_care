@@ -3,6 +3,12 @@ import "server-only";
 import mongoose, { type ClientSession } from "mongoose";
 import type { AuthenticatedUser } from "@/lib/auth";
 import {
+  applyDiagnosticCancellationFinancials,
+  assertDiagnosticItemFinanciallyExecutable,
+  BillingChargeError,
+  prepareDiagnosticBillingPersistence,
+} from "@/lib/billing-charges";
+import {
   calculateDiagnosticOrderStatus,
   canTransitionDiagnosticItemStatus,
   DIAGNOSTIC_CANCELLATION_REASON_MAX_LENGTH,
@@ -143,7 +149,11 @@ export function parseDiagnosticItemTransitionInput(
 }
 
 async function prepareDiagnosticPersistence(): Promise<void> {
-  await Promise.all([DiagnosticOrder.init(), DiagnosticOrderItem.init()]);
+  await Promise.all([
+    DiagnosticOrder.init(),
+    DiagnosticOrderItem.init(),
+    prepareDiagnosticBillingPersistence(),
+  ]);
 }
 
 async function inDiagnosticTransaction<T>(
@@ -157,6 +167,11 @@ async function inDiagnosticTransaction<T>(
       throw new Error("Diagnostic transition did not return a result");
     }
     return result;
+  } catch (error) {
+    if (error instanceof BillingChargeError) {
+      throw new DiagnosticOrderError(error.message, error.status);
+    }
+    throw error;
   } finally {
     await session.endSession();
   }
@@ -272,6 +287,18 @@ export async function transitionDiagnosticOrderItem(
       throw new DiagnosticOrderError(
         "A diagnostic item cannot complete before it has started",
         409,
+      );
+    }
+
+    if (input.status === "IN_PROGRESS") {
+      await assertDiagnosticItemFinanciallyExecutable(item._id, session);
+    } else if (input.status === "CANCELLED") {
+      await applyDiagnosticCancellationFinancials(
+        item._id,
+        item.status,
+        input.cancellationReason,
+        actorId,
+        session,
       );
     }
 

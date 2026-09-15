@@ -25,6 +25,7 @@ export const BILLING_VAT_PERCENT = 8;
 interface InsuranceLineItem {
   amount: number;
   isCoveredByInsurance: boolean;
+  financialStatus?: "ACTIVE" | "VOID";
 }
 
 interface SettlementLineItem extends InsuranceLineItem {
@@ -160,7 +161,16 @@ export function allocateLineItemSettlement(
   assertVnd(vatAmount, "VAT amount");
   assertVnd(amountPaid, "Amount paid");
 
-  const settlementOrder = lineItems
+  const activeLineItems = lineItems.filter(
+    (item) => item.financialStatus !== "VOID",
+  );
+  for (const item of lineItems) {
+    if (item.financialStatus === "VOID") {
+      item.paymentStatus = "PENDING_PAYMENT";
+    }
+  }
+
+  const settlementOrder = activeLineItems
     .map((item, index) => ({ item, index }))
     .sort(
       (left, right) =>
@@ -173,7 +183,7 @@ export function allocateLineItemSettlement(
         left.index - right.index,
     );
   let remainingInsurance = effectiveInsurancePaid;
-  const basePayable = lineItems.map(() => 0);
+  const basePayable = activeLineItems.map(() => 0);
   for (const { item, index } of settlementOrder) {
     assertVnd(item.amount, "Line item amount");
     if (!item.isCoveredByInsurance || remainingInsurance === 0) {
@@ -194,7 +204,7 @@ export function allocateLineItemSettlement(
     vatAmount,
     settlementOrder.map(({ index }) => basePayable[index]),
   );
-  const vatShares = lineItems.map(() => 0);
+  const vatShares = activeLineItems.map(() => 0);
   settlementOrder.forEach(({ index }, orderIndex) => {
     vatShares[index] = orderedVatShares[orderIndex];
   });
@@ -246,12 +256,15 @@ export function calculateBillingAmounts(
   assertVnd(input.insuranceOverrideAmount, "Insurance override amount");
   assertVnd(input.amountPaid, "Amount paid");
 
+  const activeLineItems = input.lineItems.filter(
+    (item) => item.financialStatus !== "VOID",
+  );
   const grossSubtotal = checkedSum(
-    input.lineItems.map((item) => item.amount),
+    activeLineItems.map((item) => item.amount),
     "Gross subtotal",
   );
   const coveredSubtotal = checkedSum(
-    input.lineItems
+    activeLineItems
       .filter((item) => item.isCoveredByInsurance)
       .map((item) => item.amount),
     "Covered subtotal",

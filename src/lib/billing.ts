@@ -102,6 +102,7 @@ export async function ensureBillingForAppointment({
       unitPrice: initialAmount,
       amount: initialAmount,
       isCoveredByInsurance: true,
+      financialStatus: "ACTIVE" as const,
       paymentStatus: "PENDING_PAYMENT" as const,
       addedBy: actorId,
       createdAt: now,

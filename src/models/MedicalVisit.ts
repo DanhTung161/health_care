@@ -1,6 +1,7 @@
 import mongoose, { Document, model, models, Schema } from "mongoose";
 
 export interface IMedicalVisit extends Document {
+  appointmentId?: mongoose.Types.ObjectId;
   patientId: mongoose.Types.ObjectId;
   doctorId: mongoose.Types.ObjectId;
   doctorName: string;
@@ -29,6 +30,12 @@ const PrescriptionItemSchema = new Schema(
 
 const MedicalVisitSchema = new Schema<IMedicalVisit>(
   {
+    appointmentId: {
+      type: Schema.Types.ObjectId,
+      ref: "Appointment",
+      immutable: true,
+      index: true,
+    },
     patientId: {
       type: Schema.Types.ObjectId,
       ref: "Patient",
@@ -56,5 +63,18 @@ const MedicalVisitSchema = new Schema<IMedicalVisit>(
 
 MedicalVisitSchema.index({ patientId: 1, visitDate: -1, createdAt: -1 });
 
-export default models.MedicalVisit ||
-  model<IMedicalVisit>("MedicalVisit", MedicalVisitSchema);
+const MedicalVisit =
+  models.MedicalVisit || model<IMedicalVisit>("MedicalVisit", MedicalVisitSchema);
+
+if (!MedicalVisit.schema.path("appointmentId")) {
+  MedicalVisit.schema.add({
+    appointmentId: {
+      type: Schema.Types.ObjectId,
+      ref: "Appointment",
+      immutable: true,
+      index: true,
+    },
+  });
+}
+
+export default MedicalVisit;

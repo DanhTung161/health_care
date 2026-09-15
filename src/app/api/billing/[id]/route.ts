@@ -22,12 +22,15 @@ type DetailRecord = {
   patientId: { _id: mongoose.Types.ObjectId; fullName: string; phone?: string } | null;
   lineItems: Array<{
     _id: mongoose.Types.ObjectId;
+    chargeId?: mongoose.Types.ObjectId;
     category: string;
+    serviceCode?: string;
     description: string;
     quantity: number;
     unitPrice: number;
     amount: number;
     isCoveredByInsurance: boolean;
+    financialStatus?: string;
     paymentStatus: string;
     createdAt: Date;
   }>;
@@ -147,12 +150,15 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
           : null,
         lineItems: billing.lineItems.map((item) => ({
           id: item._id.toString(),
+          chargeId: item.chargeId?.toString() ?? null,
           category: item.category,
+          serviceCode: item.serviceCode ?? null,
           description: item.description,
           quantity: item.quantity,
           unitPrice: item.unitPrice,
           amount: item.amount,
           isCoveredByInsurance: item.isCoveredByInsurance,
+          financialStatus: item.financialStatus ?? "ACTIVE",
           paymentStatus: item.paymentStatus,
           createdAt: item.createdAt.toISOString(),
         })),

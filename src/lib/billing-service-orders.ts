@@ -59,9 +59,12 @@ export class BillingServiceOrderError extends Error {
 }
 
 export function isServiceOrderExecutable(
-  lineItem: Pick<IBillingLineItem, "paymentStatus">,
+  lineItem: Pick<IBillingLineItem, "financialStatus" | "paymentStatus">,
 ): boolean {
-  return lineItem.paymentStatus === EXECUTABLE_SERVICE_ORDER_PAYMENT_STATUS;
+  return (
+    lineItem.financialStatus !== "VOID" &&
+    lineItem.paymentStatus === EXECUTABLE_SERVICE_ORDER_PAYMENT_STATUS
+  );
 }
 
 function isLineItemCategory(value: unknown): value is BillingLineItemCategory {
@@ -288,6 +291,18 @@ function assertDoctorCanChangeLineItem(
   lineItem: IBillingLineItem,
   doctorId: mongoose.Types.ObjectId,
 ): void {
+  if (lineItem.chargeId) {
+    throw new BillingServiceOrderError(
+      "Charge-linked diagnostic lines must be changed through the diagnostic workflow",
+      409,
+    );
+  }
+  if (lineItem.financialStatus === "VOID") {
+    throw new BillingServiceOrderError(
+      "Void clinical orders cannot be changed or removed",
+      409,
+    );
+  }
   if (lineItem.addedBy.toString() !== doctorId.toString()) {
     throw new BillingServiceOrderError(
       "Doctors may only change clinical orders they created",
@@ -371,6 +386,7 @@ export async function addClinicalServiceOrder(
       _id: lineItemId,
       ...input,
       amount: calculateAmount(input),
+      financialStatus: "ACTIVE",
       paymentStatus: "PENDING_PAYMENT",
       addedBy: doctorId,
       createdAt: new Date(),

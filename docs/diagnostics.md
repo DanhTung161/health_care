@@ -362,12 +362,70 @@ may finish after cancellation. This phase does not add an item workflow version
 or otherwise redesign DiagnosticOrderItem concurrency. Finalization is not
 affected because it requires terminal item status `COMPLETED`.
 
-## Future Billing boundary
+## Billing integration boundary
 
-Future Billing charges should reference `DiagnosticOrderItem._id`, because the
-item is the actual billable service and supports partial completion or
-cancellation. Billing must remain a separate domain and must not infer prices
-from diagnostic clinical records.
+`MedicalVisit.appointmentId` is an optional immutable reference used to bridge
+the MedicalVisit-owned Diagnostic domain to the Appointment-owned Billing
+aggregate. The medical-visit creation API may accept an Appointment identifier
+as a requested link, but the server establishes the relationship only after it
+loads that exact Appointment, verifies the Patient, requires an accepted or
+completed Appointment, verifies the assigned active Doctor, and derives the
+visit Doctor from the Appointment. It never searches by Patient, date, nearest
+appointment, or other heuristic. Legacy MedicalVisits remain valid without the
+reference; new billable Diagnostic orders against an unlinked visit fail with a
+domain conflict.
+
+`DiagnosticService` is the authoritative pricing source for new Diagnostic
+orders. Its normalized unique service code determines the service name,
+Diagnostic type, Billing category, integer VND unit price, and default insurance
+eligibility. Inactive services cannot be ordered. The request retains
+`serviceName` for backward request compatibility, but that value cannot override
+the catalog name. No price or financial status is stored on
+`DiagnosticOrderItem`.
+
+Every new `DiagnosticOrderItem` creates one `Charge` in the same MongoDB
+transaction. The Charge uses `(sourceType, sourceId)` =
+`(DIAGNOSTIC_ORDER_ITEM, DiagnosticOrderItem._id)` as a database-enforced unique
+financial identity and snapshots the service code, description, category,
+quantity, unit price, amount, and insurance eligibility. The corresponding
+embedded Billing line stores the Charge ID and the same historical terms.
+Changing the catalog later does not rewrite either financial snapshot.
+
+Charge status is separate from both Diagnostic execution status and Billing
+payment status:
+
+- `ACTIVE`: the linked active Billing line participates in calculation.
+- `VOID`: an unstarted and unpaid cancellation remains in history but its linked
+  Billing line is marked `VOID` and excluded from subtotal, insurance, VAT, and
+  patient-payable calculations.
+- `RECONCILIATION_REQUIRED`: cancellation after settlement or after execution
+  has started retains the active Billing line and all payment history for later
+  explicit cashier handling.
+
+Diagnostic order creation revalidates the active Doctor, visit ownership,
+Patient, exact Appointment linkage, OPEN Billing, and active service catalog
+entries inside the transaction retry callback. Order, items, Charges, Billing
+lines, recalculation, and Billing save commit together or roll back together.
+The Charge source unique index is authoritative; Billing embedded-array indexes
+are not used as the exactly-once guarantee.
+
+Before `ORDERED` or `SCHEDULED` can transition to `IN_PROGRESS`, the transaction
+must resolve the item to an `ACTIVE` Charge and active Billing line whose current
+settlement status is executable. Missing, void, reconciliation-required, unpaid,
+or inconsistent financial state returns a conflict and is never auto-repaired.
+`IN_PROGRESS -> COMPLETED` remains clinical-only. Result DRAFT/FINAL state and
+`performedBy` remain financially inert.
+
+Cancellation is coordinated with the clinical item and parent aggregate in the
+same transaction. Unstarted unpaid work becomes `VOID`; paid work and all
+`IN_PROGRESS` work becomes `RECONCILIATION_REQUIRED`. No Charge, Billing line,
+payment, or refund history is deleted, and no refund is synthesized. Billing
+cannot close while a Charge requires reconciliation.
+
+Pre-integration Diagnostic items are not backfilled. Reads, completed history,
+and Result history remain valid, while an execution or cancellation path that
+requires missing financial identity fails safely. All cross-domain mutations
+require a transaction-capable MongoDB replica set or sharded deployment.
 
 ## Deferred
 
@@ -375,8 +433,10 @@ from diagnostic clinical records.
 - Diagnostic item workflow mutation controls
 - Result approval and publication rules
 - Diagnostic workforce/technician role model
-- Service catalog and pricing
-- Billing/Revenue integration
+- DiagnosticService administration and production catalog provisioning
+- Cashier reconciliation workflow for `RECONCILIATION_REQUIRED` Charges
+- Broader non-Diagnostic Charge adoption
+- Price-book/effective-date pricing and calculation-rule versioning
 - Shopify integration
 - MedicalVisit lifecycle policy for old or clinically finalized visits
 - Medical-image and report-file storage

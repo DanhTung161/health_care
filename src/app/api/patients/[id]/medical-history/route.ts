@@ -6,8 +6,10 @@ import {
 } from "@/lib/auth";
 import connectDB from "@/lib/db";
 import { parseMedicalVisitInput } from "@/lib/medical-visit";
+import Appointment from "@/models/Appointment";
 import MedicalVisit from "@/models/MedicalVisit";
 import Patient from "@/models/Patient";
+import User from "@/models/User";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -97,6 +99,16 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
     );
   }
 
+  if (
+    parsed.data.appointmentId &&
+    !mongoose.isValidObjectId(parsed.data.appointmentId)
+  ) {
+    return NextResponse.json(
+      { success: false, error: "Invalid appointment id" },
+      { status: 400 },
+    );
+  }
+
   try {
     await connectDB();
     if (!(await Patient.exists({ _id: id }))) {
@@ -105,11 +117,74 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
         { status: 404 },
       );
     }
+
+    const { appointmentId, ...visitInput } = parsed.data;
+    let visitDoctorId = new mongoose.Types.ObjectId(authorization.user.id);
+    let visitDoctorName = authorization.user.name;
+
+    if (appointmentId) {
+      const appointment = await Appointment.findById(appointmentId).select(
+        "patientId doctorId status",
+      );
+      if (!appointment) {
+        return NextResponse.json(
+          { success: false, error: "Appointment not found" },
+          { status: 404 },
+        );
+      }
+      if (appointment.patientId.toString() !== id) {
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              "Appointment patient does not match the medical visit patient",
+          },
+          { status: 409 },
+        );
+      }
+      if (
+        appointment.status !== "ACCEPTED" &&
+        appointment.status !== "COMPLETED"
+      ) {
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              "Only accepted or completed appointments can be linked to a medical visit",
+          },
+          { status: 409 },
+        );
+      }
+      if (
+        authorization.user.role === "DOCTOR" &&
+        appointment.doctorId.toString() !== authorization.user.id
+      ) {
+        return authorizationError(403);
+      }
+
+      const appointmentDoctor = await User.findOne({
+        _id: appointment.doctorId,
+        role: "DOCTOR",
+        isActive: true,
+      }).select("name");
+      if (!appointmentDoctor) {
+        return NextResponse.json(
+          { success: false, error: "The appointment does not have an active Doctor" },
+          { status: 409 },
+        );
+      }
+
+      visitDoctorId = appointmentDoctor._id;
+      visitDoctorName = appointmentDoctor.name;
+    }
+
     const visit = await MedicalVisit.create({
-      ...parsed.data,
+      ...visitInput,
+      ...(appointmentId ? { appointmentId } : {}),
       patientId: id,
-      doctorId: authorization.user.id,
-      doctorName: authorization.user.name,
+      doctorId: visitDoctorId,
+      doctorName: visitDoctorName,
+      updatedBy: authorization.user.id,
     });
     return NextResponse.json({ success: true, data: visit }, { status: 201 });
   } catch {

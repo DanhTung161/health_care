@@ -7,6 +7,7 @@ interface PrescriptionInput {
 }
 
 export interface MedicalVisitInput {
+  appointmentId?: string;
   visitDate?: Date;
   diagnosis?: string;
   symptoms?: string;
@@ -32,6 +33,7 @@ export function parseMedicalVisitInput(
 
   const body = value as Record<string, unknown>;
   const allowed = new Set([
+    ...(!partial ? ["appointmentId"] : []),
     "visitDate",
     "diagnosis",
     "symptoms",
@@ -44,6 +46,13 @@ export function parseMedicalVisitInput(
   }
 
   const data: MedicalVisitInput = {};
+  if ("appointmentId" in body) {
+    if (partial) return { error: "Appointment linkage cannot be changed" };
+    if (typeof body.appointmentId !== "string" || !body.appointmentId.trim()) {
+      return { error: "Appointment id is invalid" };
+    }
+    data.appointmentId = body.appointmentId.trim();
+  }
   if ("visitDate" in body) {
     if (typeof body.visitDate !== "string" || !body.visitDate.trim()) {
       return { error: "Visit date is invalid" };

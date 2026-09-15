@@ -3,6 +3,14 @@ import "server-only";
 import mongoose, { type ClientSession } from "mongoose";
 import type { AuthenticatedUser } from "@/lib/auth";
 import {
+  BillingChargeError,
+  createDiagnosticCharges,
+  isDuplicateChargeSourceError,
+  loadOpenDiagnosticBilling,
+  prepareDiagnosticBillingPersistence,
+  resolveDiagnosticServices,
+} from "@/lib/billing-charges";
+import {
   calculateDiagnosticOrderStatus,
   isDiagnosticPriority,
   isDiagnosticStatus,
@@ -336,11 +344,21 @@ function parseDateFilter(
 }
 
 export function isDiagnosticDuplicateServiceError(error: unknown): boolean {
+  if (typeof error !== "object" || error === null || !("code" in error)) {
+    return false;
+  }
+  const candidate = error as {
+    code?: unknown;
+    keyPattern?: Record<string, unknown>;
+    message?: unknown;
+  };
+  if (candidate.code !== 11000) return false;
+
   return (
-    typeof error === "object" &&
-    error !== null &&
-    "code" in error &&
-    error.code === 11000
+    (candidate.keyPattern?.diagnosticOrderId === 1 &&
+      candidate.keyPattern?.serviceCode === 1) ||
+    (typeof candidate.message === "string" &&
+      candidate.message.includes("unique_service_code_per_diagnostic_order"))
   );
 }
 
@@ -528,7 +546,11 @@ function assertReadAccess(
 }
 
 async function prepareDiagnosticPersistence(): Promise<void> {
-  await Promise.all([DiagnosticOrder.init(), DiagnosticOrderItem.init()]);
+  await Promise.all([
+    DiagnosticOrder.init(),
+    DiagnosticOrderItem.init(),
+    prepareDiagnosticBillingPersistence(),
+  ]);
 }
 
 async function inDiagnosticTransaction<T>(
@@ -581,7 +603,7 @@ export async function createDiagnosticOrder(
       }
 
       const visit = await MedicalVisit.findById(medicalVisitId)
-        .select("patientId doctorId")
+        .select("appointmentId patientId doctorId")
         .session(session);
       if (!visit) {
         throw new DiagnosticOrderError("Medical visit not found", 404);
@@ -606,6 +628,28 @@ export async function createDiagnosticOrder(
         );
       }
 
+      const billing = await loadOpenDiagnosticBilling({
+        appointmentId: visit.appointmentId,
+        patientId: visit.patientId,
+        doctorId,
+        session,
+      });
+      const servicesByCode = await resolveDiagnosticServices(
+        input.items.map(({ serviceCode }) => serviceCode),
+        input.type,
+        session,
+      );
+      const resolvedItems = input.items.map((item) => {
+        const service = servicesByCode.get(item.serviceCode);
+        if (!service) {
+          throw new BillingChargeError(
+            `Diagnostic service ${item.serviceCode} could not be resolved`,
+            409,
+          );
+        }
+        return { request: item, service };
+      });
+
       const initialItemStatuses = input.items.map(() => "ORDERED" as const);
       const [order] = await DiagnosticOrder.create(
         [
@@ -622,25 +666,35 @@ export async function createDiagnosticOrder(
             updatedBy: doctorId,
           },
         ],
-        { session },
+        { session, ordered: true },
       );
       if (!order) throw new Error("Diagnostic order was not created");
 
       const items = await DiagnosticOrderItem.create(
-        input.items.map((item) => ({
+        resolvedItems.map(({ request, service }) => ({
           diagnosticOrderId: order._id,
           type: input.type,
-          serviceCode: item.serviceCode,
-          serviceName: item.serviceName,
+          serviceCode: service.serviceCode,
+          serviceName: service.serviceName,
           status: "ORDERED",
-          ...(item.notes ? { notes: item.notes } : {}),
+          ...(request.notes ? { notes: request.notes } : {}),
           updatedBy: doctorId,
         })),
-        { session },
+        { session, ordered: true },
       );
       if (items.length !== input.items.length) {
         throw new Error("Not all diagnostic order items were created");
       }
+
+      await createDiagnosticCharges(
+        billing,
+        items.map((item, index) => ({
+          diagnosticOrderItemId: item._id,
+          service: resolvedItems[index].service,
+        })),
+        doctorId,
+        session,
+      );
 
       return {
         ...serializeOrder(order.toObject() as DiagnosticOrderRecord),
@@ -650,6 +704,15 @@ export async function createDiagnosticOrder(
       };
     });
   } catch (error) {
+    if (error instanceof BillingChargeError) {
+      throw new DiagnosticOrderError(error.message, error.status);
+    }
+    if (isDuplicateChargeSourceError(error)) {
+      throw new DiagnosticOrderError(
+        "A financial Charge already exists for this diagnostic item",
+        409,
+      );
+    }
     if (isDiagnosticDuplicateServiceError(error)) {
       throw new DiagnosticOrderError(
         "A diagnostic order cannot contain duplicate service codes",

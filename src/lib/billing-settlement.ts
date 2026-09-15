@@ -14,6 +14,7 @@ import Billing, {
   type IBilling,
   type IBillingRefundTransaction,
 } from "@/models/Billing";
+import Charge from "@/models/Charge";
 
 export interface RefundInput {
   amount: number;
@@ -270,7 +271,7 @@ export async function closeBilling(
 ) {
   const appointmentId = objectId(appointmentIdValue, "appointment id");
   const actorId = objectId(actorIdValue, "authenticated user id");
-  await prepareBillingPersistence();
+  await Promise.all([prepareBillingPersistence(), Charge.init()]);
   const session = await mongoose.startSession();
 
   try {
@@ -303,6 +304,17 @@ export async function closeBilling(
       ) {
         throw new BillingSettlementError(
           "Insurance must be verified before this invoice can be closed",
+          409,
+        );
+      }
+      if (
+        await Charge.exists({
+          billingId: billing._id,
+          status: "RECONCILIATION_REQUIRED",
+        }).session(session)
+      ) {
+        throw new BillingSettlementError(
+          "Diagnostic Charges requiring reconciliation must be resolved before this invoice can be closed",
           409,
         );
       }

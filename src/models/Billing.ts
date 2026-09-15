@@ -53,14 +53,22 @@ export const BILLING_LINE_ITEM_PAYMENT_STATUSES = [
 export type BillingLineItemPaymentStatus =
   (typeof BILLING_LINE_ITEM_PAYMENT_STATUSES)[number];
 
+export const BILLING_LINE_ITEM_FINANCIAL_STATUSES = ["ACTIVE", "VOID"] as const;
+
+export type BillingLineItemFinancialStatus =
+  (typeof BILLING_LINE_ITEM_FINANCIAL_STATUSES)[number];
+
 export interface IBillingLineItem {
   _id: mongoose.Types.ObjectId;
+  chargeId?: mongoose.Types.ObjectId;
   category: BillingLineItemCategory;
+  serviceCode?: string;
   description: string;
   quantity: number;
   unitPrice: number;
   amount: number;
   isCoveredByInsurance: boolean;
+  financialStatus: BillingLineItemFinancialStatus;
   paymentStatus: BillingLineItemPaymentStatus;
   addedBy: mongoose.Types.ObjectId;
   createdAt: Date;
@@ -137,10 +145,22 @@ const integerVnd = {
 const BillingLineItemSchema = new Schema<IBillingLineItem>(
   {
     _id: { type: Schema.Types.ObjectId, auto: true },
+    chargeId: {
+      type: Schema.Types.ObjectId,
+      ref: "Charge",
+      immutable: true,
+    },
     category: {
       type: String,
       enum: BILLING_LINE_ITEM_CATEGORIES,
       required: true,
+    },
+    serviceCode: {
+      type: String,
+      trim: true,
+      uppercase: true,
+      maxlength: 64,
+      immutable: true,
     },
     description: { type: String, required: true, trim: true },
     quantity: {
@@ -155,6 +175,12 @@ const BillingLineItemSchema = new Schema<IBillingLineItem>(
     unitPrice: integerVnd,
     amount: integerVnd,
     isCoveredByInsurance: { type: Boolean, required: true },
+    financialStatus: {
+      type: String,
+      enum: BILLING_LINE_ITEM_FINANCIAL_STATUSES,
+      required: true,
+      default: "ACTIVE",
+    },
     paymentStatus: {
       type: String,
       enum: BILLING_LINE_ITEM_PAYMENT_STATUSES,
@@ -477,6 +503,26 @@ if (cachedLineItemsPath && "schema" in cachedLineItemsPath) {
       },
     });
   }
+  if (!cachedLineItemSchema.path("chargeId")) {
+    cachedLineItemSchema.add({
+      chargeId: {
+        type: Schema.Types.ObjectId,
+        ref: "Charge",
+        immutable: true,
+      },
+    });
+  }
+  if (!cachedLineItemSchema.path("serviceCode")) {
+    cachedLineItemSchema.add({
+      serviceCode: {
+        type: String,
+        trim: true,
+        uppercase: true,
+        maxlength: 64,
+        immutable: true,
+      },
+    });
+  }
   if (!cachedLineItemSchema.path("quantity")) {
     cachedLineItemSchema.add({
       quantity: {
@@ -504,16 +550,17 @@ if (cachedLineItemsPath && "schema" in cachedLineItemsPath) {
         type: String,
         enum: BILLING_LINE_ITEM_PAYMENT_STATUSES,
         required: true,
+        default: "PENDING_PAYMENT",
       },
     });
   }
-  if (!cachedLineItemSchema.path("paymentStatus")) {
+  if (!cachedLineItemSchema.path("financialStatus")) {
     cachedLineItemSchema.add({
-      paymentStatus: {
+      financialStatus: {
         type: String,
-        enum: BILLING_LINE_ITEM_PAYMENT_STATUSES,
+        enum: BILLING_LINE_ITEM_FINANCIAL_STATUSES,
         required: true,
-        default: "PENDING_PAYMENT",
+        default: "ACTIVE",
       },
     });
   }

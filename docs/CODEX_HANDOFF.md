@@ -431,13 +431,50 @@ item status `COMPLETED` and is not subject to this overlap.
 - The repository defines no automated test script; the focused audit used a
   temporary harness that was removed after execution.
 
+## Phase 8: Diagnostic Billing Integration Foundation
+
+- Added optional immutable `MedicalVisit.appointmentId`. The medical-visit API
+  validates an explicitly requested Appointment against Patient, stable
+  accepted/completed status, assigned active Doctor, and authenticated Doctor
+  ownership. It never infers an Appointment from Patient/date heuristics.
+- Added `DiagnosticService` as the server-authoritative source for normalized
+  service identity, type, Billing category, safe-integer VND price, insurance
+  eligibility, and active state. New orders persist the catalog service name;
+  the backward-compatible client name cannot override it.
+- Added standalone `Charge` with unique `(sourceType, sourceId)` identity. The
+  only operational source is `DIAGNOSTIC_ORDER_ITEM`. Each Charge stores
+  immutable historical financial snapshots and its linked Billing line ID.
+- Extended Billing lines with optional immutable `chargeId` and `serviceCode`,
+  plus independent `ACTIVE | VOID` financial status. Legacy lines remain active
+  by default. The calculator excludes VOID lines without deleting them.
+- New Diagnostic order creation now validates the trusted visit/Appointment,
+  OPEN Billing, and active matching services, then creates the Order, all Items,
+  all Charges, Billing lines, and recalculated Billing atomically.
+- Diagnostic execution now requires an ACTIVE Charge, active Billing line, OPEN
+  Billing, and the existing line-level paid/executable state before entering
+  `IN_PROGRESS`. Missing legacy financial identity fails safely and is not
+  fabricated.
+- Unstarted unpaid cancellation makes the Charge and Billing line VOID. Paid or
+  IN_PROGRESS cancellation marks the Charge `RECONCILIATION_REQUIRED`, retains
+  the active line and transaction history, and does not generate a refund.
+- Generic Doctor Billing-line mutations reject Charge-linked lines. Billing
+  close rejects unresolved reconciliation-required Charges.
+- DiagnosticOrderItem and Result models remain free of prices, payment state,
+  revenue state, and Result-driven financial behavior. `performedBy` remains
+  unrelated to Billing.
+- Legacy MedicalVisits and Diagnostic items remain readable; no migration or
+  historical Charge backfill is performed.
+
 ## Next Phase
 
-Diagnostic Billing Integration Architecture
+External review, DiagnosticService catalog provisioning, and explicit Charge
+reconciliation workflow design.
 
 ## Recommended Next Step
 
-Define how individual `DiagnosticOrderItem` service snapshots integrate with
-the existing Billing domain without placing prices or settlement state in
-clinical Diagnostic/Result records. Do not begin that work without a dedicated
-scope and repository audit.
+Obtain external review of the Charge uniqueness, transaction boundaries, void
+calculation, and linkage policy. After approval, provision real
+DiagnosticService records and design the ADMIN/STAFF workflow that resolves
+`RECONCILIATION_REQUIRED` without rewriting payments or automatically issuing
+refunds. Do not begin UI, Revenue, Result coupling, or Shopify work as part of
+that review.

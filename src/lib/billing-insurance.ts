@@ -29,12 +29,21 @@ interface InsuranceLineItem {
 }
 
 interface SettlementLineItem extends InsuranceLineItem {
-  paymentStatus: "PENDING_PAYMENT" | "PAID";
+  _id?: { toString(): string };
+  paymentStatus: "PENDING_PAYMENT" | "PARTIALLY_PAID" | "PAID";
   createdAt: Date;
 }
 
 interface PaymentTransactionAmount {
+  _id?: { toString(): string };
   amount: number;
+}
+
+interface PaymentAllocationAmount {
+  _id?: { toString(): string };
+  paymentTransactionId: { toString(): string };
+  billingLineItemId: { toString(): string };
+  allocatedAmount: number;
 }
 
 export interface BillingCalculationInput {
@@ -62,6 +71,7 @@ interface MutableBillingCalculationTarget
   extends Omit<BillingCalculationInput, "lineItems" | "amountPaid"> {
   lineItems: SettlementLineItem[];
   paymentTransactions: PaymentTransactionAmount[];
+  paymentAllocations?: PaymentAllocationAmount[];
   refundTransactions: PaymentTransactionAmount[];
   amountPaid: number;
   subtotal: number;
@@ -76,6 +86,15 @@ interface MutableBillingCalculationTarget
   balanceDue: number;
   refundDue: number;
   paymentStatus: "UNPAID" | "PARTIALLY_PAID" | "PAID";
+}
+
+interface BillingAllocationTarget {
+  lineItems: SettlementLineItem[];
+  paymentTransactions: PaymentTransactionAmount[];
+  paymentAllocations?: PaymentAllocationAmount[];
+  refundTransactions: PaymentTransactionAmount[];
+  effectiveInsurancePaid: number;
+  vatAmount: number;
 }
 
 export class BillingCalculationError extends Error {
@@ -147,6 +166,379 @@ function proportionalShares(total: number, weights: number[]): number[] {
     .map(({ amount }) => amount);
 }
 
+export type BillingAllocationState = "DURABLE" | "LEGACY_UNALLOCATED";
+
+export interface BillingLineSettlementSummary {
+  billingLineItemId: string;
+  patientPayableAmount: number;
+  allocatedAmount: number | null;
+  remainingPatientPayable: number | null;
+  paymentStatus: "PENDING_PAYMENT" | "PARTIALLY_PAID" | "PAID";
+}
+
+export interface PlannedPaymentAllocation {
+  billingLineItemId: string;
+  allocatedAmount: number;
+}
+
+interface LinePatientLiability {
+  item: SettlementLineItem;
+  id: string;
+  patientPayableAmount: number;
+}
+
+function settlementOrder(lineItems: SettlementLineItem[]) {
+  return lineItems
+    .map((item, originalIndex) => ({
+      item,
+      originalIndex,
+      id: item._id?.toString() ?? `legacy-index-${originalIndex}`,
+    }))
+    .filter(({ item }) => item.financialStatus !== "VOID")
+    .sort(
+      (left, right) =>
+        (left.item.createdAt instanceof Date
+          ? left.item.createdAt.getTime()
+          : 0) -
+          (right.item.createdAt instanceof Date
+            ? right.item.createdAt.getTime()
+            : 0) || left.id.localeCompare(right.id),
+    );
+}
+
+// Patient liability preserves the existing invoice calculation exactly:
+// insurance is applied oldest eligible line first, then the already-calculated
+// invoice VAT is distributed by largest remainder across post-insurance bases.
+// Stable createdAt/_id ordering resolves every remainder tie deterministically.
+function calculateLinePatientLiabilities(
+  lineItems: SettlementLineItem[],
+  effectiveInsurancePaid: number,
+  vatAmount: number,
+): LinePatientLiability[] {
+  assertVnd(effectiveInsurancePaid, "Effective insurance payment");
+  assertVnd(vatAmount, "VAT amount");
+
+  const ordered = settlementOrder(lineItems);
+  let remainingInsurance = effectiveInsurancePaid;
+  const basePayable = ordered.map(({ item }) => {
+    assertVnd(item.amount, "Line item amount");
+    if (!item.isCoveredByInsurance || remainingInsurance === 0) {
+      return item.amount;
+    }
+    const allocatedInsurance = Math.min(item.amount, remainingInsurance);
+    remainingInsurance -= allocatedInsurance;
+    return item.amount - allocatedInsurance;
+  });
+  if (remainingInsurance !== 0) {
+    throw new BillingCalculationError(
+      "Insurance payment could not be allocated to eligible line items",
+    );
+  }
+
+  const vatShares = proportionalShares(vatAmount, basePayable);
+  const liabilities = ordered.map(({ item, id }, index) => ({
+    item,
+    id,
+    patientPayableAmount: basePayable[index] + vatShares[index],
+  }));
+  const expectedPatientLiability =
+    checkedSum(
+      ordered.map(({ item }) => item.amount),
+      "Active line total",
+    ) -
+    effectiveInsurancePaid +
+    vatAmount;
+  assertVnd(expectedPatientLiability, "Expected patient liability");
+  if (
+    checkedSum(
+      liabilities.map(({ patientPayableAmount }) => patientPayableAmount),
+      "Line patient liability",
+    ) !== expectedPatientLiability
+  ) {
+    throw new BillingCalculationError(
+      "Line patient liabilities do not preserve the invoice patient total",
+    );
+  }
+  return liabilities;
+}
+
+function applyLegacyLineItemSettlement(
+  lineItems: SettlementLineItem[],
+  liabilities: LinePatientLiability[],
+  amountPaid: number,
+): void {
+  let remainingPayment = amountPaid;
+  for (const { item, patientPayableAmount } of liabilities) {
+    const allocatedPayment = Math.min(patientPayableAmount, remainingPayment);
+    remainingPayment -= allocatedPayment;
+    item.paymentStatus =
+      allocatedPayment === patientPayableAmount
+        ? "PAID"
+        : allocatedPayment > 0
+          ? "PARTIALLY_PAID"
+          : "PENDING_PAYMENT";
+  }
+  for (const item of lineItems) {
+    if (item.financialStatus === "VOID") {
+      item.paymentStatus = "PENDING_PAYMENT";
+    }
+  }
+  if (remainingPayment !== 0) {
+    throw new BillingCalculationError(
+      "Patient payment could not be allocated to line items",
+    );
+  }
+}
+
+function durableLineSettlement(
+  billing: BillingAllocationTarget,
+  liabilities: LinePatientLiability[],
+): BillingLineSettlementSummary[] {
+  const allocations = billing.paymentAllocations;
+  if (!Array.isArray(allocations)) {
+    throw new BillingCalculationError(
+      "Billing does not contain durable payment allocations",
+    );
+  }
+  if (billing.refundTransactions.length > 0) {
+    throw new BillingCalculationError(
+      "Refund allocation is required before an allocation-managed Billing can be recalculated",
+    );
+  }
+
+  const transactionAmounts = new Map<string, number>();
+  for (const transaction of billing.paymentTransactions) {
+    const id = transaction._id?.toString();
+    if (!id) {
+      throw new BillingCalculationError(
+        "A payment transaction is missing durable identity",
+      );
+    }
+    if (transactionAmounts.has(id)) {
+      throw new BillingCalculationError("Duplicate payment transaction identity");
+    }
+    assertVnd(transaction.amount, "Payment amount");
+    transactionAmounts.set(id, transaction.amount);
+  }
+
+  const liabilityByLine = new Map(
+    liabilities.map((liability) => [liability.id, liability]),
+  );
+  if (
+    liabilities.some(({ item }) => !item._id) ||
+    liabilityByLine.size !== liabilities.length
+  ) {
+    throw new BillingCalculationError(
+      "Durable allocation requires unique Billing line identities",
+    );
+  }
+  const allocatedByPayment = new Map<string, number>();
+  const allocatedByLine = new Map<string, number>();
+  const allocationIdentities = new Set<string>();
+  const allocationIds = new Set<string>();
+
+  for (const allocation of allocations) {
+    const allocationId = allocation._id?.toString();
+    const paymentId = allocation.paymentTransactionId?.toString();
+    const lineId = allocation.billingLineItemId?.toString();
+    if (!allocationId || !paymentId || !lineId) {
+      throw new BillingCalculationError(
+        "A payment allocation is missing durable identity",
+      );
+    }
+    if (allocationIds.has(allocationId)) {
+      throw new BillingCalculationError("Duplicate payment allocation identity");
+    }
+    allocationIds.add(allocationId);
+    const pairIdentity = `${paymentId}:${lineId}`;
+    if (allocationIdentities.has(pairIdentity)) {
+      throw new BillingCalculationError(
+        "A payment has duplicate allocations to the same Billing line",
+      );
+    }
+    allocationIdentities.add(pairIdentity);
+    if (!transactionAmounts.has(paymentId)) {
+      throw new BillingCalculationError(
+        "A payment allocation references a payment outside this Billing",
+      );
+    }
+    if (!liabilityByLine.has(lineId)) {
+      throw new BillingCalculationError(
+        "A payment allocation references a missing or VOID Billing line",
+      );
+    }
+    if (!Number.isSafeInteger(allocation.allocatedAmount) || allocation.allocatedAmount <= 0) {
+      throw new BillingCalculationError(
+        "Payment allocation must be a positive safe integer VND amount",
+      );
+    }
+    allocatedByPayment.set(
+      paymentId,
+      checkedSum(
+        [allocatedByPayment.get(paymentId) ?? 0, allocation.allocatedAmount],
+        "Payment allocation total",
+      ),
+    );
+    allocatedByLine.set(
+      lineId,
+      checkedSum(
+        [allocatedByLine.get(lineId) ?? 0, allocation.allocatedAmount],
+        "Line allocation total",
+      ),
+    );
+  }
+
+  for (const [paymentId, paymentAmount] of transactionAmounts) {
+    if ((allocatedByPayment.get(paymentId) ?? 0) !== paymentAmount) {
+      throw new BillingCalculationError(
+        "Payment allocation total must equal its payment transaction amount",
+      );
+    }
+  }
+
+  const summaries = liabilities.map(({ item, id, patientPayableAmount }) => {
+    const allocatedAmount = allocatedByLine.get(id) ?? 0;
+    if (allocatedAmount > patientPayableAmount) {
+      throw new BillingCalculationError(
+        "Billing line allocation exceeds its patient-payable amount",
+      );
+    }
+    const remainingPatientPayable = patientPayableAmount - allocatedAmount;
+    const paymentStatus =
+      remainingPatientPayable === 0
+        ? "PAID"
+        : allocatedAmount > 0
+          ? "PARTIALLY_PAID"
+          : "PENDING_PAYMENT";
+    item.paymentStatus = paymentStatus;
+    return {
+      billingLineItemId: id,
+      patientPayableAmount,
+      allocatedAmount,
+      remainingPatientPayable,
+      paymentStatus,
+    } satisfies BillingLineSettlementSummary;
+  });
+
+  for (const item of billing.lineItems) {
+    if (item.financialStatus === "VOID") {
+      item.paymentStatus = "PENDING_PAYMENT";
+    }
+  }
+
+  const allocatedTotal = checkedSum(
+    allocations.map(({ allocatedAmount }) => allocatedAmount),
+    "Invoice allocation total",
+  );
+  const paymentTotal = checkedSum(
+    billing.paymentTransactions.map(({ amount }) => amount),
+    "Payment transaction total",
+  );
+  if (allocatedTotal !== paymentTotal) {
+    throw new BillingCalculationError(
+      "Invoice allocation total must equal collected payment transactions",
+    );
+  }
+  return summaries;
+}
+
+export function getBillingAllocationState(
+  billing: Pick<BillingAllocationTarget, "paymentAllocations">,
+): BillingAllocationState {
+  return Array.isArray(billing.paymentAllocations)
+    ? "DURABLE"
+    : "LEGACY_UNALLOCATED";
+}
+
+export function initializeDurablePaymentAllocations(
+  billing: MutableBillingCalculationTarget,
+): void {
+  if (Array.isArray(billing.paymentAllocations)) return;
+  if (
+    billing.paymentTransactions.length > 0 ||
+    billing.refundTransactions.length > 0 ||
+    billing.amountPaid > 0
+  ) {
+    throw new BillingCalculationError(
+      "Legacy Billing with financial history requires explicit allocation reconciliation",
+    );
+  }
+  billing.paymentAllocations = [];
+}
+
+export function getBillingLineSettlementSummaries(
+  billing: BillingAllocationTarget,
+): BillingLineSettlementSummary[] {
+  const liabilities = calculateLinePatientLiabilities(
+    billing.lineItems,
+    billing.effectiveInsurancePaid,
+    billing.vatAmount,
+  );
+  if (!Array.isArray(billing.paymentAllocations)) {
+    return liabilities.map(({ item, id, patientPayableAmount }) => ({
+      billingLineItemId: id,
+      patientPayableAmount,
+      allocatedAmount: null,
+      remainingPatientPayable: null,
+      paymentStatus: item.paymentStatus,
+    }));
+  }
+  return durableLineSettlement(billing, liabilities);
+}
+
+export function planOldestFirstPaymentAllocations(
+  billing: BillingAllocationTarget,
+  amount: number,
+): PlannedPaymentAllocation[] {
+  if (!Array.isArray(billing.paymentAllocations)) {
+    throw new BillingCalculationError(
+      "Durable payment allocation must be initialized before collecting payment",
+    );
+  }
+  if (!Number.isSafeInteger(amount) || amount <= 0) {
+    throw new BillingCalculationError(
+      "Payment allocation amount must be a positive safe integer VND amount",
+    );
+  }
+  const summaries = getBillingLineSettlementSummaries(billing);
+  let remaining = amount;
+  const planned: PlannedPaymentAllocation[] = [];
+  for (const summary of summaries) {
+    const lineRemaining = summary.remainingPatientPayable ?? 0;
+    const allocatedAmount = Math.min(lineRemaining, remaining);
+    if (allocatedAmount > 0) {
+      planned.push({
+        billingLineItemId: summary.billingLineItemId,
+        allocatedAmount,
+      });
+      remaining -= allocatedAmount;
+    }
+    if (remaining === 0) break;
+  }
+  if (remaining !== 0) {
+    throw new BillingCalculationError(
+      "Payment could not be allocated within remaining patient liability",
+    );
+  }
+  return planned;
+}
+
+export function getAllocatedAmountForBillingLine(
+  billing: Pick<BillingAllocationTarget, "paymentAllocations">,
+  billingLineItemId: string,
+): number | null {
+  if (!Array.isArray(billing.paymentAllocations)) return null;
+  return checkedSum(
+    billing.paymentAllocations
+      .filter(
+        (allocation) =>
+          allocation.billingLineItemId.toString() === billingLineItemId,
+      )
+      .map(({ allocatedAmount }) => allocatedAmount),
+    "Line allocation total",
+  );
+}
+
 // Insurance is allocated to the oldest eligible line items first. The invoice
 // VAT is then distributed proportionally across each item's remaining base
 // payable amount, using largest-remainder rounding with oldest-item tie breaks.
@@ -161,66 +553,12 @@ export function allocateLineItemSettlement(
   assertVnd(vatAmount, "VAT amount");
   assertVnd(amountPaid, "Amount paid");
 
-  const activeLineItems = lineItems.filter(
-    (item) => item.financialStatus !== "VOID",
-  );
-  for (const item of lineItems) {
-    if (item.financialStatus === "VOID") {
-      item.paymentStatus = "PENDING_PAYMENT";
-    }
-  }
-
-  const settlementOrder = activeLineItems
-    .map((item, index) => ({ item, index }))
-    .sort(
-      (left, right) =>
-        (left.item.createdAt instanceof Date
-          ? left.item.createdAt.getTime()
-          : 0) -
-          (right.item.createdAt instanceof Date
-            ? right.item.createdAt.getTime()
-            : 0) ||
-        left.index - right.index,
-    );
-  let remainingInsurance = effectiveInsurancePaid;
-  const basePayable = activeLineItems.map(() => 0);
-  for (const { item, index } of settlementOrder) {
-    assertVnd(item.amount, "Line item amount");
-    if (!item.isCoveredByInsurance || remainingInsurance === 0) {
-      basePayable[index] = item.amount;
-      continue;
-    }
-    const allocatedInsurance = Math.min(item.amount, remainingInsurance);
-    remainingInsurance -= allocatedInsurance;
-    basePayable[index] = item.amount - allocatedInsurance;
-  }
-  if (remainingInsurance !== 0) {
-    throw new BillingCalculationError(
-      "Insurance payment could not be allocated to eligible line items",
-    );
-  }
-
-  const orderedVatShares = proportionalShares(
+  const liabilities = calculateLinePatientLiabilities(
+    lineItems,
+    effectiveInsurancePaid,
     vatAmount,
-    settlementOrder.map(({ index }) => basePayable[index]),
   );
-  const vatShares = activeLineItems.map(() => 0);
-  settlementOrder.forEach(({ index }, orderIndex) => {
-    vatShares[index] = orderedVatShares[orderIndex];
-  });
-  let remainingPayment = amountPaid;
-  settlementOrder.forEach(({ item, index }) => {
-    const payableShare = basePayable[index] + vatShares[index];
-    const allocatedPayment = Math.min(payableShare, remainingPayment);
-    remainingPayment -= allocatedPayment;
-    item.paymentStatus =
-      allocatedPayment === payableShare ? "PAID" : "PENDING_PAYMENT";
-  });
-  if (remainingPayment !== 0) {
-    throw new BillingCalculationError(
-      "Patient payment could not be allocated to line items",
-    );
-  }
+  applyLegacyLineItemSettlement(lineItems, liabilities, amountPaid);
 }
 
 function automaticInsurancePayment(
@@ -377,12 +715,20 @@ export function recalculateBilling(
   billing.balanceDue = result.balanceDue;
   billing.refundDue = result.refundDue;
   billing.paymentStatus = result.paymentStatus;
-  allocateLineItemSettlement(
+  const liabilities = calculateLinePatientLiabilities(
     billing.lineItems,
     result.effectiveInsurancePaid,
     result.vatAmount,
-    Math.min(amountPaid, result.totalPatientPayable),
   );
+  if (Array.isArray(billing.paymentAllocations)) {
+    durableLineSettlement(billing, liabilities);
+  } else {
+    applyLegacyLineItemSettlement(
+      billing.lineItems,
+      liabilities,
+      Math.min(amountPaid, result.totalPatientPayable),
+    );
+  }
 
   // Retained for compatibility with the initial Billing foundation.
   billing.subtotal = result.grossSubtotal;

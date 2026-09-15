@@ -3,6 +3,7 @@ import "server-only";
 import mongoose, { type ClientSession } from "mongoose";
 import {
   BillingCalculationError,
+  getAllocatedAmountForBillingLine,
   recalculateBilling,
 } from "@/lib/billing-insurance";
 import { isServiceOrderExecutable } from "@/lib/billing-service-orders";
@@ -578,8 +579,23 @@ export async function applyDiagnosticCancellationFinancials(
   }
 
   const now = new Date();
+  let allocatedAmount: number | null;
+  try {
+    allocatedAmount = getAllocatedAmountForBillingLine(
+      billing,
+      lineItem._id.toString(),
+    );
+  } catch (error) {
+    if (error instanceof BillingCalculationError) {
+      throw new BillingChargeError(error.message, 409);
+    }
+    throw error;
+  }
   const requiresReconciliation =
-    currentItemStatus === "IN_PROGRESS" || lineItem.paymentStatus === "PAID";
+    currentItemStatus === "IN_PROGRESS" ||
+    lineItem.paymentStatus === "PARTIALLY_PAID" ||
+    lineItem.paymentStatus === "PAID" ||
+    (allocatedAmount ?? 0) > 0;
   const targetStatus = requiresReconciliation
     ? "RECONCILIATION_REQUIRED"
     : "VOID";

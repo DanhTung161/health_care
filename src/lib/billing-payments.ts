@@ -4,6 +4,10 @@ import mongoose, { type ClientSession } from "mongoose";
 import { prepareBillingPersistence } from "@/lib/billing";
 import {
   BillingCalculationError,
+  getBillingAllocationState,
+  getBillingLineSettlementSummaries,
+  initializeDurablePaymentAllocations,
+  planOldestFirstPaymentAllocations,
   recalculateBilling,
 } from "@/lib/billing-insurance";
 import Appointment from "@/models/Appointment";
@@ -13,6 +17,7 @@ import Billing, {
   type BillingPaymentMethod,
   type BillingPaymentType,
   type IBilling,
+  type IBillingPaymentAllocation,
   type IBillingPaymentTransaction,
 } from "@/models/Billing";
 
@@ -154,10 +159,23 @@ interface PaymentResultTransaction {
 export interface PaymentResult {
   replayed: boolean;
   transaction: PaymentResultTransaction;
+  allocationState: ReturnType<typeof getBillingAllocationState>;
+  allocations: Array<{
+    id: string;
+    billingLineItemId: string;
+    allocatedAmount: number;
+    allocatedAt: Date;
+  }>;
   amountPaid: number;
   balanceDue: number;
   paymentStatus: IBilling["paymentStatus"];
-  lineItems: Array<{ id: string; paymentStatus: "PENDING_PAYMENT" | "PAID" }>;
+  lineItems: Array<{
+    id: string;
+    patientPayableAmount: number;
+    allocatedAmount: number | null;
+    remainingPatientPayable: number | null;
+    paymentStatus: IBilling["lineItems"][number]["paymentStatus"];
+  }>;
 }
 
 function samePayment(
@@ -178,6 +196,17 @@ function paymentResult(
   transaction: IBillingPaymentTransaction,
   replayed: boolean,
 ): PaymentResult {
+  const transactionId = transaction._id.toString();
+  const summaries = getBillingLineSettlementSummaries(billing);
+  const summaryByLine = new Map(
+    summaries.map((summary) => [summary.billingLineItemId, summary]),
+  );
+  const allocations = Array.isArray(billing.paymentAllocations)
+    ? billing.paymentAllocations.filter(
+        (allocation) =>
+          allocation.paymentTransactionId.toString() === transactionId,
+      )
+    : [];
   return {
     replayed,
     transaction: {
@@ -190,11 +219,24 @@ function paymentResult(
       collectedBy: transaction.collectedBy.toString(),
       collectedAt: transaction.collectedAt,
     },
+    allocationState: getBillingAllocationState(billing),
+    allocations: allocations.map((allocation) => ({
+      id: allocation._id.toString(),
+      billingLineItemId: allocation.billingLineItemId.toString(),
+      allocatedAmount: allocation.allocatedAmount,
+      allocatedAt: allocation.allocatedAt,
+    })),
     amountPaid: billing.amountPaid,
     balanceDue: billing.balanceDue,
     paymentStatus: billing.paymentStatus,
     lineItems: billing.lineItems.map((item) => ({
       id: item._id.toString(),
+      patientPayableAmount:
+        summaryByLine.get(item._id.toString())?.patientPayableAmount ?? 0,
+      allocatedAmount:
+        summaryByLine.get(item._id.toString())?.allocatedAmount ?? null,
+      remainingPatientPayable:
+        summaryByLine.get(item._id.toString())?.remainingPatientPayable ?? null,
       paymentStatus: item.paymentStatus,
     })),
   };
@@ -277,6 +319,18 @@ function applyCalculation(billing: IBilling): void {
   }
 }
 
+function prepareAllocationPlan(billing: IBilling, amount: number) {
+  try {
+    initializeDurablePaymentAllocations(billing);
+    return planOldestFirstPaymentAllocations(billing, amount);
+  } catch (error) {
+    if (error instanceof BillingCalculationError) {
+      throw new BillingPaymentError(error.message, 409);
+    }
+    throw error;
+  }
+}
+
 function isDuplicateKeyError(error: unknown): boolean {
   return (
     typeof error === "object" &&
@@ -323,13 +377,32 @@ export async function collectBillingPayment(
       }
 
       const transactionId = new mongoose.Types.ObjectId();
+      const collectedAt = new Date();
+      const allocationPlan = prepareAllocationPlan(billing, input.amount);
       billing.paymentTransactions.push({
         _id: transactionId,
         idempotencyKey,
         ...input,
         collectedBy: actorId,
-        collectedAt: new Date(),
+        collectedAt,
       });
+      if (!billing.paymentAllocations) {
+        throw new Error("Durable payment allocations were not initialized");
+      }
+      billing.paymentAllocations.push(
+        ...allocationPlan.map(
+          ({ billingLineItemId, allocatedAmount }) =>
+            ({
+              _id: new mongoose.Types.ObjectId(),
+              paymentTransactionId: transactionId,
+              billingLineItemId: new mongoose.Types.ObjectId(
+                billingLineItemId,
+              ),
+              allocatedAmount,
+              allocatedAt: collectedAt,
+            }) satisfies IBillingPaymentAllocation,
+        ),
+      );
       applyCalculation(billing);
       billing.updatedBy = actorId;
       await billing.save({ session });

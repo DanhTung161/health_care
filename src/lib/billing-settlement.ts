@@ -9,6 +9,7 @@ import {
 } from "@/lib/billing-charges";
 import {
   BillingCalculationError,
+  getBillingAllocationState,
   recalculateBilling,
 } from "@/lib/billing-insurance";
 import Appointment from "@/models/Appointment";
@@ -233,6 +234,12 @@ export async function processBillingRefund(
           409,
         );
       }
+      if (getBillingAllocationState(billing) === "DURABLE") {
+        throw new BillingSettlementError(
+          "Refund allocation is deferred; allocation-managed invoices cannot be refunded in this phase",
+          409,
+        );
+      }
       recalculate(billing);
       if (billing.refundDue === 0) {
         throw new BillingSettlementError("This invoice has no refund due", 409);
@@ -308,6 +315,15 @@ export async function closeBilling(
         session,
       );
       recalculate(billing);
+      if (
+        getBillingAllocationState(billing) === "LEGACY_UNALLOCATED" &&
+        (billing.paymentTransactions.length > 0 || billing.amountPaid > 0)
+      ) {
+        throw new BillingSettlementError(
+          "Legacy Billing payment allocation must be reconciled before this invoice can be closed",
+          409,
+        );
+      }
       if (
         chargeLinks.some(
           ({ charge }) => charge.status === "RECONCILIATION_REQUIRED",

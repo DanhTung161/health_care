@@ -47,6 +47,7 @@ export type BillingLineItemCategory =
 
 export const BILLING_LINE_ITEM_PAYMENT_STATUSES = [
   "PENDING_PAYMENT",
+  "PARTIALLY_PAID",
   "PAID",
 ] as const;
 
@@ -86,6 +87,14 @@ export interface IBillingPaymentTransaction {
   collectedAt: Date;
 }
 
+export interface IBillingPaymentAllocation {
+  _id: mongoose.Types.ObjectId;
+  paymentTransactionId: mongoose.Types.ObjectId;
+  billingLineItemId: mongoose.Types.ObjectId;
+  allocatedAmount: number;
+  allocatedAt: Date;
+}
+
 export interface IBillingRefundTransaction {
   _id: mongoose.Types.ObjectId;
   idempotencyKey: string;
@@ -103,6 +112,7 @@ export interface IBilling extends Document {
   lookupCode: string;
   lineItems: IBillingLineItem[];
   paymentTransactions: IBillingPaymentTransaction[];
+  paymentAllocations?: IBillingPaymentAllocation[];
   refundTransactions: IBillingRefundTransaction[];
   subtotal: number;
   insurancePaid: number;
@@ -252,6 +262,33 @@ const BillingPaymentTransactionSchema = new Schema<IBillingPaymentTransaction>(
   },
 );
 
+const BillingPaymentAllocationSchema = new Schema<IBillingPaymentAllocation>(
+  {
+    _id: { type: Schema.Types.ObjectId, auto: true },
+    paymentTransactionId: {
+      type: Schema.Types.ObjectId,
+      required: true,
+      immutable: true,
+    },
+    billingLineItemId: {
+      type: Schema.Types.ObjectId,
+      required: true,
+      immutable: true,
+    },
+    allocatedAmount: {
+      ...integerVnd,
+      min: 1,
+      immutable: true,
+    },
+    allocatedAt: {
+      type: Date,
+      required: true,
+      default: Date.now,
+      immutable: true,
+    },
+  },
+);
+
 const BillingRefundTransactionSchema = new Schema<IBillingRefundTransaction>(
   {
     _id: { type: Schema.Types.ObjectId, auto: true },
@@ -353,6 +390,26 @@ const BillingSchema = new Schema<IBilling>(
         message: "Payment idempotency keys must be unique",
       },
     },
+    paymentAllocations: {
+      type: [BillingPaymentAllocationSchema],
+      default: undefined,
+      validate: {
+        validator: (allocations: IBillingPaymentAllocation[] | undefined) => {
+          if (!allocations) return true;
+          const allocationIds = allocations.map(({ _id }) => _id.toString());
+          const identities = allocations.map(
+            ({ paymentTransactionId, billingLineItemId }) =>
+              `${paymentTransactionId.toString()}:${billingLineItemId.toString()}`,
+          );
+          return (
+            new Set(allocationIds).size === allocationIds.length &&
+            new Set(identities).size === identities.length
+          );
+        },
+        message:
+          "Payment allocation identities and payment/line pairs must be unique",
+      },
+    },
     refundTransactions: {
       type: [BillingRefundTransactionSchema],
       required: true,
@@ -450,6 +507,10 @@ const cachedBillingFields: Record<string, mongoose.SchemaDefinitionProperty> = {
     type: [BillingPaymentTransactionSchema],
     required: true,
     default: [],
+  },
+  paymentAllocations: {
+    type: [BillingPaymentAllocationSchema],
+    default: undefined,
   },
   refundTransactions: {
     type: [BillingRefundTransactionSchema],
@@ -579,6 +640,18 @@ if (cachedLineItemsPath && "schema" in cachedLineItemsPath) {
         default: "PENDING_PAYMENT",
       },
     });
+  }
+  const cachedPaymentStatusPath = cachedLineItemSchema.path(
+    "paymentStatus",
+  ) as mongoose.SchemaType & {
+    enumValues?: string[];
+    enum(...values: string[]): mongoose.SchemaType;
+  };
+  if (
+    cachedPaymentStatusPath &&
+    !cachedPaymentStatusPath.enumValues?.includes("PARTIALLY_PAID")
+  ) {
+    cachedPaymentStatusPath.enum("PARTIALLY_PAID");
   }
   if (!cachedLineItemSchema.path("financialStatus")) {
     cachedLineItemSchema.add({

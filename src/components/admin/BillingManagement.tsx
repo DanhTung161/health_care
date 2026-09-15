@@ -33,7 +33,7 @@ type Detail = {
   invoiceDate: string;
   patient: { fullName: string; phone: string | null } | null;
   appointment: { id: string; appointmentDate: string; timeSlot: string; status: string; doctorName: string | null; reason: string | null } | null;
-  lineItems: Array<{ id: string; category: string; description: string; quantity: number; unitPrice: number; amount: number; isCoveredByInsurance: boolean; paymentStatus: "PENDING_PAYMENT" | "PAID" }>;
+  lineItems: Array<{ id: string; category: string; description: string; quantity: number; unitPrice: number; amount: number; isCoveredByInsurance: boolean; paymentStatus: "PENDING_PAYMENT" | "PARTIALLY_PAID" | "PAID" }>;
   paymentTransactions: Array<{ id: string; amount: number; method: string; type: string; reference: string | null; note: string | null; collectedBy: { name: string } | null; collectedAt: string }>;
   refundTransactions: Array<{ id: string; amount: number; method: string; reason: string; processedBy: { name: string } | null; processedAt: string }>;
   insurance: { plan: InsurancePlan; grossSubtotal: number; coveredSubtotal: number; calculatedInsurancePaid: number; overrideEnabled: boolean; overrideAmount: number; effectiveInsurancePaid: number; postInsuranceAmount: number; verificationStatus: VerificationStatus; note: string | null; verifiedBy: { name: string } | null; verifiedAt: string | null };

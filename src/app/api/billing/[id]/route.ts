@@ -1,8 +1,17 @@
 import mongoose from "mongoose";
 import { type NextRequest, NextResponse } from "next/server";
 import { authenticateRequest } from "@/lib/auth";
+import {
+  BillingCalculationError,
+  getBillingAllocationState,
+  getBillingLineSettlementSummaries,
+  type InsurancePlan,
+} from "@/lib/billing-insurance";
 import connectDB from "@/lib/db";
-import Billing from "@/models/Billing";
+import Billing, {
+  type BillingLineItemFinancialStatus,
+  type BillingLineItemPaymentStatus,
+} from "@/models/Billing";
 
 type RouteContext = { params: Promise<{ id: string }> };
 type IdName = { _id: mongoose.Types.ObjectId; name: string };
@@ -30,8 +39,8 @@ type DetailRecord = {
     unitPrice: number;
     amount: number;
     isCoveredByInsurance: boolean;
-    financialStatus?: string;
-    paymentStatus: string;
+    financialStatus?: BillingLineItemFinancialStatus;
+    paymentStatus: BillingLineItemPaymentStatus;
     addedBy: mongoose.Types.ObjectId;
     createdAt: Date;
   }>;
@@ -45,6 +54,13 @@ type DetailRecord = {
     collectedBy: IdName | null;
     collectedAt: Date;
   }>;
+  paymentAllocations?: Array<{
+    _id: mongoose.Types.ObjectId;
+    paymentTransactionId: mongoose.Types.ObjectId;
+    billingLineItemId: mongoose.Types.ObjectId;
+    allocatedAmount: number;
+    allocatedAt: Date;
+  }>;
   refundTransactions: Array<{
     _id: mongoose.Types.ObjectId;
     amount: number;
@@ -53,7 +69,7 @@ type DetailRecord = {
     processedBy: IdName | null;
     processedAt: Date;
   }>;
-  insurancePlan: string;
+  insurancePlan: InsurancePlan;
   grossSubtotal: number;
   coveredSubtotal: number;
   calculatedInsurancePaid: number;
@@ -124,6 +140,10 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
         { status: 404 },
       );
     }
+    const lineSettlement = getBillingLineSettlementSummaries(billing);
+    const settlementByLine = new Map(
+      lineSettlement.map((summary) => [summary.billingLineItemId, summary]),
+    );
 
     return NextResponse.json({
       success: true,
@@ -149,21 +169,29 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
               phone: billing.patientId.phone ?? null,
             }
           : null,
-        lineItems: billing.lineItems.map((item) => ({
-          id: item._id.toString(),
-          chargeId: item.chargeId?.toString() ?? null,
-          category: item.category,
-          serviceCode: item.serviceCode ?? null,
-          description: item.description,
-          quantity: item.quantity,
-          unitPrice: item.unitPrice,
-          amount: item.amount,
-          isCoveredByInsurance: item.isCoveredByInsurance,
-          financialStatus: item.financialStatus ?? "ACTIVE",
-          paymentStatus: item.paymentStatus,
-          addedBy: item.addedBy.toString(),
-          createdAt: item.createdAt.toISOString(),
-        })),
+        allocationState: getBillingAllocationState(billing),
+        lineItems: billing.lineItems.map((item) => {
+          const settlement = settlementByLine.get(item._id.toString());
+          return {
+            id: item._id.toString(),
+            chargeId: item.chargeId?.toString() ?? null,
+            category: item.category,
+            serviceCode: item.serviceCode ?? null,
+            description: item.description,
+            quantity: item.quantity,
+            unitPrice: item.unitPrice,
+            amount: item.amount,
+            isCoveredByInsurance: item.isCoveredByInsurance,
+            financialStatus: item.financialStatus ?? "ACTIVE",
+            paymentStatus: item.paymentStatus,
+            patientPayableAmount: settlement?.patientPayableAmount ?? 0,
+            allocatedAmount: settlement?.allocatedAmount ?? null,
+            remainingPatientPayable:
+              settlement?.remainingPatientPayable ?? null,
+            addedBy: item.addedBy.toString(),
+            createdAt: item.createdAt.toISOString(),
+          };
+        }),
         paymentTransactions: billing.paymentTransactions.map((transaction) => ({
           id: transaction._id.toString(),
           amount: transaction.amount,
@@ -179,6 +207,15 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
             : null,
           collectedAt: transaction.collectedAt.toISOString(),
         })),
+        paymentAllocations: (billing.paymentAllocations ?? []).map(
+          (allocation) => ({
+            id: allocation._id.toString(),
+            paymentTransactionId: allocation.paymentTransactionId.toString(),
+            billingLineItemId: allocation.billingLineItemId.toString(),
+            allocatedAmount: allocation.allocatedAmount,
+            allocatedAt: allocation.allocatedAt.toISOString(),
+          }),
+        ),
         refundTransactions: (billing.refundTransactions ?? []).map(
           (transaction) => ({
             id: transaction._id.toString(),
@@ -225,7 +262,13 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
         },
       },
     });
-  } catch {
+  } catch (error) {
+    if (error instanceof BillingCalculationError) {
+      return NextResponse.json(
+        { success: false, error: error.message },
+        { status: 409 },
+      );
+    }
     return NextResponse.json(
       { success: false, error: "Unable to load invoice" },
       { status: 500 },

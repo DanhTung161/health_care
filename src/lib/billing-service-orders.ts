@@ -311,7 +311,7 @@ function assertDoctorCanChangeLineItem(
   }
   if (lineItem.paymentStatus !== "PENDING_PAYMENT") {
     throw new BillingServiceOrderError(
-      "Paid clinical orders cannot be changed or removed",
+      "Partially or fully paid clinical orders cannot be changed or removed",
       409,
     );
   }

@@ -512,16 +512,84 @@ item status `COMPLETED` and is not subject to this overlap.
 - No reconciliation resolver, Payment/Refund redesign, Revenue behavior,
   Result coupling, UI, new role, or Shopify integration was added.
 
+## Phase 10A: Durable Payment Allocation and Payment Workflow
+
+- `Billing` remains the single invoice/settlement aggregate. Durable
+  `paymentAllocations` are embedded beside the existing append-only Payment and
+  Refund transaction histories; no Payment, Invoice, or InvoiceItem collection
+  was added. Each immutable allocation has its own ObjectId plus
+  `paymentTransactionId`, `billingLineItemId`, positive safe-integer
+  `allocatedAmount`, and `allocatedAt`.
+- Payment transactions remain cash-collection history. Payment allocations are
+  the application of that collected money to patient liability. Invoice totals
+  remain calculator-derived, and ACTIVE line settlement is now derived from
+  durable allocations as `PENDING_PAYMENT | PARTIALLY_PAID | PAID`.
+- Every allocation must resolve to a Payment and ACTIVE line in the same
+  Billing. Allocation IDs and Payment/line pairs must be unique. Allocations
+  for each Payment must sum exactly to that Payment, total allocations must
+  equal collected Payments, and a line may not exceed its calculated
+  patient-payable share. VOID lines cannot receive allocations.
+- The per-line patient basis preserves the existing insurance and tax rules:
+  effective insurance is consumed by oldest eligible lines first; invoice VAT
+  is distributed across post-insurance line bases using safe-integer
+  largest-remainder allocation; ties use `createdAt`, then line `_id`. The line
+  liabilities are checked to sum exactly to `totalPatientPayable`.
+- Cash is allocated by the server across ACTIVE lines in the same stable
+  oldest-first order. The existing product rejects overpayment, so every new
+  Payment is fully applied; no unapplied-deposit or advance-account domain was
+  invented. Zero patient-liability lines are financially PAID without a cash
+  allocation. Only ACTIVE/PAID service orders remain executable.
+- Payment and allocation records are appended to the same Billing document and
+  saved in the existing MongoDB transaction. Concurrent writers touch that
+  same document and therefore conflict/retry on the current snapshot; the
+  retried request rechecks balance and allocation capacity. The existing
+  unique Idempotency-Key index remains authoritative. An exact replay returns
+  the original Payment and allocations without appending either again; changed
+  semantics with the same key remain a conflict.
+- New Billing records initialize `paymentAllocations: []`. Existing Billing
+  records without the field remain readable and are explicitly exposed as
+  `LEGACY_UNALLOCATED`; no historical Payment-to-line relationship is inferred
+  or persisted. A legacy invoice with prior financial history rejects new
+  Payments and rejects close until an explicit reconciliation/migration exists.
+- Invoice detail now exposes allocation state, durable allocations, and each
+  line's patient-payable, allocated, and remaining amounts. Payment mutation
+  responses expose the allocations created for that Payment and current line
+  settlement summaries. The Billing UI was not redesigned; its line status
+  type was only extended for `PARTIALLY_PAID`.
+- Close retains every Phase 9 Charge, completion, payment, refund, and insurance
+  check and additionally validates durable allocation identity/conservation.
+  A diagnostic line with any durable partial allocation requires
+  reconciliation instead of becoming VOID. CLOSED Billing continues to reject
+  Payment mutation.
+- Refund allocation is intentionally deferred to Phase 10B. Allocation-managed
+  Billing fails closed at the Refund service boundary, so the current aggregate
+  Refund calculation cannot silently invalidate allocations. Legacy Refund
+  behavior remains available only for Billing that has no durable allocation
+  field.
+- Transaction-capable MongoDB verification passed 45 assertions covering the
+  required one/many/partial/multiple Payment cases, deterministic ordering,
+  insurance-adjusted liability, conservation, overpayment and over-allocation,
+  idempotency conflicts/replay, concurrent payment conflict, VOID exclusion,
+  Charge snapshot preservation, CLOSED rejection, close failure/success,
+  legacy behavior, and diagnostic execution gating. Cleanup checks found zero
+  temporary Appointments, Billings, or Charges.
+- Focused ESLint and focused TypeScript (excluding only the two known empty
+  client pages) passed. Full `npm run lint` passed with only the pre-existing
+  unused-disable warning in `src/lib/db.ts`. The production build compiled,
+  then stopped at the pre-existing generated type errors because the empty
+  `doctor-list` and `services` client pages are not modules; it also printed
+  the pre-existing middleware-to-proxy deprecation warning.
+
 ## Next Phase
 
-External review of the finalized invoice/consolidation invariants before any
-Phase 10 Payment/Refund allocation design.
+External review of the Phase 10A durable allocation invariants before Phase
+10B Refund allocation and reconciliation design.
 
 ## Recommended Next Step
 
-Review reciprocal Charge validation, invoice-close transaction ordering,
-expected-OPEN close behavior, Appointment/Billing and invoice identity indexes,
-and the conservative reconciliation close block. Then define the per-line
-allocation invariant needed for Phase 10 before implementing partial-payment or
-Refund allocation changes. Do not begin Revenue, UI, Result coupling, or
-Shopify work as part of that review.
+Design Phase 10B as explicit append-only Refund-to-original-allocation reversal
+records. It should preserve original Payment/allocation history, deterministically
+reduce effective line settlement, resolve `RECONCILIATION_REQUIRED` Charges only
+through audited financial action, remain idempotent and transactional, and keep
+CLOSED Billing immutable. Do not begin Revenue, UI redesign, Result coupling,
+or Shopify work as part of that phase.

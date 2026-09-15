@@ -32,6 +32,7 @@ type DetailRecord = {
     isCoveredByInsurance: boolean;
     financialStatus?: string;
     paymentStatus: string;
+    addedBy: mongoose.Types.ObjectId;
     createdAt: Date;
   }>;
   paymentTransactions: Array<{
@@ -160,6 +161,7 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
           isCoveredByInsurance: item.isCoveredByInsurance,
           financialStatus: item.financialStatus ?? "ACTIVE",
           paymentStatus: item.paymentStatus,
+          addedBy: item.addedBy.toString(),
           createdAt: item.createdAt.toISOString(),
         })),
         paymentTransactions: billing.paymentTransactions.map((transaction) => ({

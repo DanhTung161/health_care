@@ -311,15 +311,29 @@ const BillingSchema = new Schema<IBilling>(
       ref: "Appointment",
       required: true,
       unique: true,
+      immutable: true,
     },
     patientId: {
       type: Schema.Types.ObjectId,
       ref: "Patient",
       required: true,
       index: true,
+      immutable: true,
     },
-    invoiceNo: { type: String, required: true, unique: true, trim: true },
-    lookupCode: { type: String, required: true, unique: true, trim: true },
+    invoiceNo: {
+      type: String,
+      required: true,
+      unique: true,
+      trim: true,
+      immutable: true,
+    },
+    lookupCode: {
+      type: String,
+      required: true,
+      unique: true,
+      trim: true,
+      immutable: true,
+    },
     lineItems: {
       type: [BillingLineItemSchema],
       required: true,
@@ -479,6 +493,18 @@ for (const [path, definition] of Object.entries(cachedBillingFields)) {
   if (!Billing.schema.path(path)) {
     Billing.schema.add({ [path]: definition });
   }
+}
+
+// Preserve invoice identity guarantees when Next.js development reloads reuse
+// a model compiled before these fields were explicitly immutable.
+for (const pathName of [
+  "appointmentId",
+  "patientId",
+  "invoiceNo",
+  "lookupCode",
+]) {
+  const path = Billing.schema.path(pathName);
+  if (path) path.options.immutable = true;
 }
 
 // Next.js development reloads can reuse a model compiled before these embedded

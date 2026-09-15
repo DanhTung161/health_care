@@ -9,7 +9,10 @@ import { isServiceOrderExecutable } from "@/lib/billing-service-orders";
 import type { DiagnosticStatus, DiagnosticType } from "@/lib/diagnostic";
 import Appointment from "@/models/Appointment";
 import Billing, { type IBilling, type IBillingLineItem } from "@/models/Billing";
-import Charge, { type ICharge } from "@/models/Charge";
+import Charge, {
+  CHARGE_SOURCE_TYPES,
+  type ICharge,
+} from "@/models/Charge";
 import DiagnosticService, {
   type DiagnosticBillingCategory,
 } from "@/models/DiagnosticService";
@@ -50,6 +53,8 @@ interface ChargeContext {
   billing: IBilling;
   lineItem: IBillingLineItem;
 }
+
+export type ValidatedChargeBillingLink = ChargeContext;
 
 export async function prepareDiagnosticBillingPersistence(): Promise<void> {
   await Promise.all([Billing.init(), Charge.init(), DiagnosticService.init()]);
@@ -208,6 +213,14 @@ export async function createDiagnosticCharges(
   actorId: mongoose.Types.ObjectId,
   session: ClientSession,
 ): Promise<ICharge[]> {
+  if (billing.billingStatus !== "OPEN") {
+    throw new BillingChargeError(
+      "Closed Billing cannot receive new diagnostic charges",
+      409,
+    );
+  }
+  await validateBillingChargeInvariants(billing, session);
+
   const now = new Date();
   const records = inputs.map(({ diagnosticOrderItemId, service }) => {
     const chargeId = new mongoose.Types.ObjectId();
@@ -267,6 +280,7 @@ export async function createDiagnosticCharges(
   }
 
   billing.lineItems.push(...records.map(({ lineItem }) => lineItem));
+  await validateBillingChargeInvariants(billing, session);
   applyCalculation(billing);
   billing.updatedBy = actorId;
   await billing.save({ session });
@@ -300,6 +314,175 @@ export function isDuplicateChargeSourceError(error: unknown): boolean {
   );
 }
 
+export function isDuplicateChargeBillingLineError(error: unknown): boolean {
+  const candidate = duplicateKeyCandidate(error);
+  if (!candidate || candidate.code !== 11000) return false;
+
+  return (
+    (candidate.keyPattern?.billingId === 1 &&
+      candidate.keyPattern?.billingLineItemId === 1) ||
+    (typeof candidate.message === "string" &&
+      candidate.message.includes("unique_charge_billing_line"))
+  );
+}
+
+export function isDuplicateChargeIdentityError(error: unknown): boolean {
+  return (
+    isDuplicateChargeSourceError(error) ||
+    isDuplicateChargeBillingLineError(error)
+  );
+}
+
+export function isChargeBackedInvoiceLine(
+  lineItem: IBillingLineItem,
+): lineItem is IBillingLineItem & { chargeId: mongoose.Types.ObjectId } {
+  return lineItem.chargeId instanceof mongoose.Types.ObjectId;
+}
+
+function consistencyError(message: string): never {
+  throw new BillingChargeError(
+    `Invoice Charge consistency error: ${message}`,
+    409,
+  );
+}
+
+function effectiveFinancialStatus(
+  lineItem: IBillingLineItem,
+): "ACTIVE" | "VOID" {
+  return lineItem.financialStatus ?? "ACTIVE";
+}
+
+function validateReciprocalState(
+  charge: ICharge,
+  lineItem: IBillingLineItem,
+): void {
+  const lineStatus = effectiveFinancialStatus(lineItem);
+  if (charge.status === "ACTIVE" && lineStatus !== "ACTIVE") {
+    consistencyError("an ACTIVE Charge points to a VOID Billing line");
+  }
+  if (charge.status === "VOID" && lineStatus !== "VOID") {
+    consistencyError("a VOID Charge points to an ACTIVE Billing line");
+  }
+  if (
+    charge.status === "RECONCILIATION_REQUIRED" &&
+    lineStatus !== "ACTIVE"
+  ) {
+    consistencyError(
+      "a reconciliation-required Charge lost its active historical Billing line",
+    );
+  }
+}
+
+function validateHistoricalSnapshot(
+  charge: ICharge,
+  lineItem: IBillingLineItem,
+): void {
+  if (
+    lineItem.serviceCode !== charge.serviceCode ||
+    lineItem.category !== charge.category ||
+    lineItem.description !== charge.description ||
+    lineItem.quantity !== charge.quantity ||
+    lineItem.unitPrice !== charge.unitPrice ||
+    lineItem.amount !== charge.amount ||
+    lineItem.isCoveredByInsurance !== charge.isCoveredByInsurance ||
+    !lineItem.addedBy.equals(charge.createdBy)
+  ) {
+    consistencyError(
+      "a Charge and its Billing line have different historical snapshots",
+    );
+  }
+}
+
+export async function validateBillingChargeInvariants(
+  billing: IBilling,
+  session: ClientSession,
+): Promise<ValidatedChargeBillingLink[]> {
+  const chargeBackedLines = billing.lineItems.filter(isChargeBackedInvoiceLine);
+  const linesByChargeId = new Map<string, IBillingLineItem[]>();
+
+  for (const lineItem of chargeBackedLines) {
+    const chargeId = lineItem.chargeId.toString();
+    const lines = linesByChargeId.get(chargeId) ?? [];
+    lines.push(lineItem);
+    linesByChargeId.set(chargeId, lines);
+    if (lines.length > 1) {
+      consistencyError("multiple Billing lines reference the same Charge");
+    }
+  }
+
+  const chargeIds = [...linesByChargeId.keys()].map(
+    (value) => new mongoose.Types.ObjectId(value),
+  );
+  const relatedCharges = await Charge.find(
+    chargeIds.length > 0
+      ? {
+          $or: [
+            { billingId: billing._id },
+            { _id: { $in: chargeIds } },
+          ],
+        }
+      : { billingId: billing._id },
+  ).session(session);
+  const chargesById = new Map(
+    relatedCharges.map((charge) => [charge._id.toString(), charge]),
+  );
+
+  for (const lineItem of chargeBackedLines) {
+    const charge = chargesById.get(lineItem.chargeId.toString());
+    if (!charge) {
+      consistencyError("a Charge-backed Billing line references a missing Charge");
+    }
+    if (!charge.billingId.equals(billing._id)) {
+      consistencyError("a Billing line references a Charge owned by another invoice");
+    }
+    if (!charge.billingLineItemId.equals(lineItem._id)) {
+      consistencyError("Charge.billingLineItemId does not match its Billing line");
+    }
+    validateReciprocalState(charge, lineItem);
+    validateHistoricalSnapshot(charge, lineItem);
+  }
+
+  for (const charge of relatedCharges) {
+    if (!charge.billingId.equals(billing._id)) continue;
+    if (!CHARGE_SOURCE_TYPES.includes(charge.sourceType)) {
+      consistencyError("a Charge has an unsupported source identity");
+    }
+    const lines = linesByChargeId.get(charge._id.toString()) ?? [];
+    if (lines.length !== 1) {
+      consistencyError("a Charge references a missing Billing line");
+    }
+    const [lineItem] = lines;
+    if (!charge.billingLineItemId.equals(lineItem._id)) {
+      consistencyError("Charge.billingLineItemId does not match its Billing line");
+    }
+  }
+
+  if (relatedCharges.length > 0) {
+    const sourceConditions = relatedCharges.map((charge) => ({
+      sourceType: charge.sourceType,
+      sourceId: charge.sourceId,
+    }));
+    const sourceMatches = await Charge.find({ $or: sourceConditions })
+      .select("sourceType sourceId")
+      .session(session);
+    const sourceCounts = new Map<string, number>();
+    for (const charge of sourceMatches) {
+      const key = `${charge.sourceType}:${charge.sourceId.toString()}`;
+      const count = (sourceCounts.get(key) ?? 0) + 1;
+      sourceCounts.set(key, count);
+      if (count > 1) {
+        consistencyError("duplicate Charge source identity was detected");
+      }
+    }
+  }
+
+  return chargeBackedLines.map((lineItem) => ({
+    charge: chargesById.get(lineItem.chargeId.toString())!,
+    billing,
+    lineItem,
+  }));
+}
+
 async function loadChargeContext(
   sourceId: mongoose.Types.ObjectId,
   session: ClientSession,
@@ -323,19 +506,18 @@ async function loadChargeContext(
     );
   }
 
-  const matchingLines = billing.lineItems.filter(
-    (lineItem: IBillingLineItem) =>
-      lineItem._id.equals(charge.billingLineItemId) &&
-      lineItem.chargeId?.equals(charge._id),
+  const links = await validateBillingChargeInvariants(billing, session);
+  const link = links.find(({ charge: linkedCharge }) =>
+    linkedCharge._id.equals(charge._id),
   );
-  if (matchingLines.length !== 1) {
+  if (!link) {
     throw new BillingChargeError(
       "Diagnostic Charge does not match exactly one Billing line",
       409,
     );
   }
 
-  return { charge, billing, lineItem: matchingLines[0] };
+  return link;
 }
 
 function chargeStatusError(charge: ICharge): BillingChargeError {
@@ -434,9 +616,14 @@ export async function applyDiagnosticCancellationFinancials(
     lineItem.financialStatus = "VOID";
     lineItem.paymentStatus = "PENDING_PAYMENT";
     applyCalculation(billing);
-    billing.updatedBy = actorId;
-    await billing.save({ session });
   }
+
+  await validateBillingChargeInvariants(billing, session);
+  billing.updatedBy = actorId;
+  // A reconciliation-only transition does not change line totals, but it must
+  // still write the Billing document so it conflicts safely with invoice close.
+  billing.updatedAt = now;
+  await billing.save({ session });
 
   return targetStatus;
 }

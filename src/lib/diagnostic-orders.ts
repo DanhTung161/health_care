@@ -5,7 +5,7 @@ import type { AuthenticatedUser } from "@/lib/auth";
 import {
   BillingChargeError,
   createDiagnosticCharges,
-  isDuplicateChargeSourceError,
+  isDuplicateChargeIdentityError,
   loadOpenDiagnosticBilling,
   prepareDiagnosticBillingPersistence,
   resolveDiagnosticServices,
@@ -707,9 +707,9 @@ export async function createDiagnosticOrder(
     if (error instanceof BillingChargeError) {
       throw new DiagnosticOrderError(error.message, error.status);
     }
-    if (isDuplicateChargeSourceError(error)) {
+    if (isDuplicateChargeIdentityError(error)) {
       throw new DiagnosticOrderError(
-        "A financial Charge already exists for this diagnostic item",
+        "The diagnostic financial Charge identity already exists",
         409,
       );
     }

@@ -465,16 +465,63 @@ item status `COMPLETED` and is not subject to this overlap.
 - Legacy MedicalVisits and Diagnostic items remain readable; no migration or
   historical Charge backfill is performed.
 
+## Phase 9: Invoice Workflow and Charge Consolidation
+
+- `Billing` is the Healthcare invoice aggregate. It already owns invoice
+  identity, appointment/patient linkage, historical line items, insurance,
+  Payment and Refund ledgers, calculated totals, settlement state, and the
+  `OPEN | CLOSED` lifecycle. No duplicate Invoice or InvoiceItem collection was
+  introduced and the Billing collection/API names were not changed.
+- Appointment-to-Billing identity remains database protected by the unique
+  `appointmentId` index. `invoiceNo` and `lookupCode` remain server-generated
+  and uniquely indexed. Appointment, Patient, and invoice identity fields are
+  explicitly immutable, including when a cached development model is reused.
+- `Charge` remains the immutable source ledger; a Charge-backed Billing line is
+  its historical representation inside the invoice. The unique Charge source
+  and Billing-line indexes remain the database-backed exactly-once controls. No
+  unique multikey index was added to the embedded Billing array.
+- A reusable consolidation validator now verifies both directions of the
+  Charge/Billing relationship, rejects missing or foreign Charges/lines,
+  duplicate embedded Charge references, mismatched line IDs, duplicate source
+  identity, snapshot divergence, and invalid ACTIVE/VOID/reconciliation state
+  pairs. It does not repair or re-price inconsistent history.
+- Diagnostic consolidation validates the existing invoice before adding a
+  Charge and validates the reciprocal relationship again before recalculation
+  and persistence. CLOSED invoices continue to reject consolidation.
+- Invoice close is the finalization boundary. A close transaction re-reads the
+  completed Appointment and OPEN Billing, validates all Charge-backed lines,
+  recalculates persisted totals, enforces payment/refund/insurance settlement,
+  blocks reconciliation-required Charges, writes current calculations, and
+  performs an expected-`OPEN` close update. Concurrent financial writers touch
+  the same Billing document and therefore conflict/retry rather than silently
+  overwriting the close.
+- Diagnostic reconciliation-required cancellation now also writes the Billing
+  document even though totals do not change. This supplies the required write
+  conflict with concurrent invoice close. It still preserves the active line
+  and Payment/Refund history and creates no automatic Refund.
+- `VOID` Charge/line history remains stored and excluded by the existing
+  calculator. Charge-linked lines remain unavailable to generic Doctor edit or
+  removal paths. Legacy consultation and Doctor-created non-Charge lines keep
+  their existing behavior.
+- Invoice detail reads expose Charge ID, service code, financial status,
+  payment status, and the server actor who added each historical line. They do
+  not query the current DiagnosticService catalog for historical presentation.
+- Billing payment status and Billing lifecycle remain separate. The existing
+  binary per-line `PENDING_PAYMENT | PAID` allocation is unchanged; a durable
+  per-line partial allocation/Refund design remains a Phase 10 prerequisite.
+- No reconciliation resolver, Payment/Refund redesign, Revenue behavior,
+  Result coupling, UI, new role, or Shopify integration was added.
+
 ## Next Phase
 
-External review, DiagnosticService catalog provisioning, and explicit Charge
-reconciliation workflow design.
+External review of the finalized invoice/consolidation invariants before any
+Phase 10 Payment/Refund allocation design.
 
 ## Recommended Next Step
 
-Obtain external review of the Charge uniqueness, transaction boundaries, void
-calculation, and linkage policy. After approval, provision real
-DiagnosticService records and design the ADMIN/STAFF workflow that resolves
-`RECONCILIATION_REQUIRED` without rewriting payments or automatically issuing
-refunds. Do not begin UI, Revenue, Result coupling, or Shopify work as part of
-that review.
+Review reciprocal Charge validation, invoice-close transaction ordering,
+expected-OPEN close behavior, Appointment/Billing and invoice identity indexes,
+and the conservative reconciliation close block. Then define the per-line
+allocation invariant needed for Phase 10 before implementing partial-payment or
+Refund allocation changes. Do not begin Revenue, UI, Result coupling, or
+Shopify work as part of that review.

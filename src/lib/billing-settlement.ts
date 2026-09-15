@@ -4,6 +4,10 @@ import mongoose, { type ClientSession } from "mongoose";
 import { COMPLETED_APPOINTMENT_STATUS } from "@/lib/appointment-status";
 import { prepareBillingPersistence } from "@/lib/billing";
 import {
+  BillingChargeError,
+  validateBillingChargeInvariants,
+} from "@/lib/billing-charges";
+import {
   BillingCalculationError,
   recalculateBilling,
 } from "@/lib/billing-insurance";
@@ -103,6 +107,20 @@ function recalculate(billing: IBilling): void {
     recalculateBilling(billing);
   } catch (error) {
     if (error instanceof BillingCalculationError) {
+      throw new BillingSettlementError(error.message, 409);
+    }
+    throw error;
+  }
+}
+
+async function validateInvoiceChargeIntegrity(
+  billing: IBilling,
+  session: ClientSession,
+) {
+  try {
+    return await validateBillingChargeInvariants(billing, session);
+  } catch (error) {
+    if (error instanceof BillingChargeError) {
       throw new BillingSettlementError(error.message, 409);
     }
     throw error;
@@ -277,7 +295,6 @@ export async function closeBilling(
   try {
     const result = await session.withTransaction(async () => {
       const billing = await loadCompletedBilling(appointmentId, session);
-      recalculate(billing);
       if (billing.billingStatus === "CLOSED") {
         return {
           billingStatus: billing.billingStatus,
@@ -285,6 +302,21 @@ export async function closeBilling(
           closedBy: billing.closedBy?.toString(),
           replayed: true,
         };
+      }
+      const chargeLinks = await validateInvoiceChargeIntegrity(
+        billing,
+        session,
+      );
+      recalculate(billing);
+      if (
+        chargeLinks.some(
+          ({ charge }) => charge.status === "RECONCILIATION_REQUIRED",
+        )
+      ) {
+        throw new BillingSettlementError(
+          "Diagnostic Charges requiring reconciliation must be resolved before this invoice can be closed",
+          409,
+        );
       }
       if (billing.balanceDue > 0) {
         throw new BillingSettlementError(
@@ -307,27 +339,33 @@ export async function closeBilling(
           409,
         );
       }
-      if (
-        await Charge.exists({
-          billingId: billing._id,
-          status: "RECONCILIATION_REQUIRED",
-        }).session(session)
-      ) {
+      const now = new Date();
+      billing.updatedBy = actorId;
+      billing.updatedAt = now;
+      await billing.save({ session });
+
+      const closedBilling = await Billing.findOneAndUpdate(
+        { _id: billing._id, billingStatus: "OPEN" },
+        {
+          $set: {
+            billingStatus: "CLOSED",
+            closedAt: now,
+            closedBy: actorId,
+            updatedBy: actorId,
+          },
+        },
+        { returnDocument: "after", runValidators: true, session },
+      );
+      if (!closedBilling) {
         throw new BillingSettlementError(
-          "Diagnostic Charges requiring reconciliation must be resolved before this invoice can be closed",
+          "Invoice state changed before it could be closed",
           409,
         );
       }
-      const now = new Date();
-      billing.billingStatus = "CLOSED";
-      billing.closedAt = now;
-      billing.closedBy = actorId;
-      billing.updatedBy = actorId;
-      await billing.save({ session });
       return {
-        billingStatus: billing.billingStatus,
-        closedAt: now,
-        closedBy: actorId.toString(),
+        billingStatus: closedBilling.billingStatus,
+        closedAt: closedBilling.closedAt,
+        closedBy: closedBilling.closedBy?.toString(),
         replayed: false,
       };
     });

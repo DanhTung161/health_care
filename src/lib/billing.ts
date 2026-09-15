@@ -71,12 +71,20 @@ function generateLookupCode(): string {
   return randomBytes(8).toString("base64url").toUpperCase();
 }
 
-function isDuplicateKeyError(error: unknown): boolean {
+function isDuplicateAppointmentBillingError(error: unknown): boolean {
+  if (typeof error !== "object" || error === null || !("code" in error)) {
+    return false;
+  }
+  const candidate = error as {
+    code?: unknown;
+    keyPattern?: Record<string, unknown>;
+    message?: unknown;
+  };
   return (
-    typeof error === "object" &&
-    error !== null &&
-    "code" in error &&
-    (error as { code?: unknown }).code === 11000
+    candidate.code === 11000 &&
+    (candidate.keyPattern?.appointmentId === 1 ||
+      (typeof candidate.message === "string" &&
+        candidate.message.includes("appointmentId_1")))
   );
 }
 
@@ -164,7 +172,7 @@ export async function ensureBillingForAppointment({
 
     return billing;
   } catch (error) {
-    if (isDuplicateKeyError(error)) {
+    if (isDuplicateAppointmentBillingError(error)) {
       const billing = await Billing.findOne({ appointmentId }).session(session);
       if (billing) {
         return billing;

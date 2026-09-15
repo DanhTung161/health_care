@@ -2,43 +2,42 @@ import { type NextRequest } from "next/server";
 import { authenticateRequest } from "@/lib/auth";
 import connectDB from "@/lib/db";
 import {
-  canMutateDiagnosticResults,
-  startDiagnosticResultCorrection,
+  canReadDiagnosticResults,
+  getDiagnosticResultHistory,
+  parseResultHistoryInput,
 } from "@/lib/diagnostic-result-service";
 import {
   diagnosticResultAuthorizationError,
   diagnosticResultOperationError,
   diagnosticResultSuccess,
-  readResultJsonBody,
 } from "@/lib/diagnostic-result-route";
 
 type RouteContext = {
-  params: Promise<{ orderId: string; itemId: string }>;
+  params: Promise<{ id: string; itemId: string }>;
 };
 
-export async function POST(request: NextRequest, { params }: RouteContext) {
+export async function GET(request: NextRequest, { params }: RouteContext) {
   const user = await authenticateRequest(request);
   if (!user) return diagnosticResultAuthorizationError(401);
-  if (!canMutateDiagnosticResults(user.role)) {
+  if (!canReadDiagnosticResults(user.role)) {
     return diagnosticResultAuthorizationError(403);
   }
 
-  const parsed = await readResultJsonBody(request);
-  if ("error" in parsed) return parsed.error;
-  const { orderId, itemId } = await params;
+  const { id: orderId, itemId } = await params;
   try {
+    const input = parseResultHistoryInput(request.nextUrl.searchParams);
     await connectDB();
-    const result = await startDiagnosticResultCorrection(
+    const result = await getDiagnosticResultHistory(
       orderId,
       itemId,
       user,
-      parsed.data,
+      input,
     );
-    return diagnosticResultSuccess(result, 201);
+    return diagnosticResultSuccess(result);
   } catch (error) {
     return diagnosticResultOperationError(
       error,
-      "Unable to create Result correction",
+      "Unable to load Result history",
     );
   }
 }

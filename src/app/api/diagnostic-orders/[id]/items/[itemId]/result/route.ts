@@ -15,7 +15,7 @@ import {
 } from "@/lib/diagnostic-result-route";
 
 type RouteContext = {
-  params: Promise<{ orderId: string; itemId: string }>;
+  params: Promise<{ id: string; itemId: string }>;
 };
 
 export async function GET(request: NextRequest, { params }: RouteContext) {
@@ -25,7 +25,7 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
     return diagnosticResultAuthorizationError(403);
   }
 
-  const { orderId, itemId } = await params;
+  const { id: orderId, itemId } = await params;
   try {
     await connectDB();
     const result = await getCurrentDiagnosticResult(orderId, itemId, user);
@@ -44,7 +44,7 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
 
   const parsed = await readResultJsonBody(request);
   if ("error" in parsed) return parsed.error;
-  const { orderId, itemId } = await params;
+  const { id: orderId, itemId } = await params;
   try {
     await connectDB();
     const result = await createDiagnosticResult(

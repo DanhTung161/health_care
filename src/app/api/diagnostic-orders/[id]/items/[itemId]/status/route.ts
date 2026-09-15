@@ -9,7 +9,7 @@ import {
 import { DiagnosticOrderError } from "@/lib/diagnostic-orders";
 
 type RouteContext = {
-  params: Promise<{ orderId: string; itemId: string }>;
+  params: Promise<{ id: string; itemId: string }>;
 };
 
 function operationError(error: unknown) {
@@ -40,7 +40,7 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
     );
   }
 
-  const { orderId, itemId } = await params;
+  const { id: orderId, itemId } = await params;
   if (!mongoose.isValidObjectId(orderId)) {
     return NextResponse.json(
       { success: false, error: "Invalid diagnostic order id" },

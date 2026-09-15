@@ -14,7 +14,7 @@ import {
 } from "@/lib/diagnostic-result-route";
 
 type RouteContext = {
-  params: Promise<{ orderId: string; itemId: string }>;
+  params: Promise<{ id: string; itemId: string }>;
 };
 
 export async function POST(request: NextRequest, { params }: RouteContext) {
@@ -32,7 +32,7 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
   }
   const bodyError = await requireEmptyResultBody(request);
   if (bodyError) return bodyError;
-  const { orderId, itemId } = await params;
+  const { id: orderId, itemId } = await params;
 
   try {
     await connectDB();

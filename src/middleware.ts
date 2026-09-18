@@ -177,6 +177,8 @@ function unauthorizedResponse(request: NextRequest, role: Role): NextResponse {
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+  // Shopify signs the raw webhook body; the Route Handler is the auth boundary.
+  if (pathname === '/api/shopify/webhook') return NextResponse.next();
   const token = request.cookies.get(AUTH_COOKIE)?.value;
   const session = token ? await verifyJwt(token) : null;
   const hasInvalidToken = Boolean(token) && !session;

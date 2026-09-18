@@ -535,6 +535,9 @@ BillingSchema.index(
   { "refundTransactions.idempotencyKey": 1 },
   { unique: true, sparse: true },
 );
+BillingSchema.index({ createdAt: 1 });
+BillingSchema.index({ "paymentTransactions.collectedAt": 1 });
+BillingSchema.index({ "refundTransactions.processedAt": 1 });
 
 const Billing = models.Billing || model<IBilling>("Billing", BillingSchema);
 
@@ -558,6 +561,16 @@ if (
     { "refundTransactions.idempotencyKey": 1 },
     { unique: true, sparse: true },
   );
+}
+
+for (const field of [
+  "createdAt",
+  "paymentTransactions.collectedAt",
+  "refundTransactions.processedAt",
+]) {
+  if (!Billing.schema.indexes().some(([fields]) => fields[field] === 1)) {
+    Billing.schema.index({ [field]: 1 });
+  }
 }
 
 const cachedBillingFields: Record<string, mongoose.SchemaDefinitionProperty> = {

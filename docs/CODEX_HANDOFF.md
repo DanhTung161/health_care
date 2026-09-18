@@ -2,7 +2,7 @@
 
 ## Current Phase
 
-Diagnostic Item Workflow UI Completion
+Phase 11: Revenue & Financial Reporting
 
 ## Completed
 
@@ -623,12 +623,46 @@ item status `COMPLETED` and is not subject to this overlap.
 
 ## Next Phase
 
-External review of Phase 10B Refund/reversal and Charge reconciliation
-invariants before any further financial workflow expansion.
+External review of Phase 11 reporting before Phase 12 Shopify integration.
 
 ## Recommended Next Step
 
-Review the Refund/reversal conservation, explicit Charge reconciliation audit,
-insurance changes after financial history, and the conservative stop for
-unpaid/ambiguous started diagnostics. No Revenue, Result coupling, UI redesign,
-or Shopify behavior is part of this phase.
+Review Phase 11 reporting consistency, date boundaries, legacy ambiguity, and
+cash conservation before Phase 12. Shopify remains out of scope.
+
+## Phase 11: Revenue & Financial Reporting
+
+- GET /api/billing/reporting accepts from/to ISO timestamps with Z or numeric
+  offsets, inclusive from and exclusive to, for a maximum of 31 days. ADMIN and
+  STAFF may read it; DOCTOR is denied by middleware and the handler. The older
+  daily cashier reconciliation API and its consumer remain unchanged.
+- Billing.createdAt selects invoices for billed patient liability, OPEN/CLOSED
+  counts, outstanding, refund due, and unresolved Charge exposure. Payment
+  collectedAt and Refund processedAt independently select cash-flow events.
+  Billed patient amount comes from persisted Billing line snapshots and current
+  project insurance/VAT calculation, not current catalog prices. Gross
+  collected is persisted Payments, refunded is persisted Refunds, and net
+  collected is their signed difference: it may be negative when period Refunds
+  exceed period Payments, including a Refund for a Payment from an earlier
+  period. VOID lines do not contribute active liability or create synthetic
+  Refunds. Refund due is separate from cash flow.
+- Outstanding on OPEN durable invoices is calculated patient liability less
+  effective Payment allocation after Refund reversals. The shared calculator
+  checks allocation and reversal identity/conservation, orphan references,
+  over-reversals, and VOID settlement. Snapshot disagreement fails explicitly.
+  Legacy invoices can contribute valid transaction cash flow and billed totals.
+  Legacy OPEN invoices with Payment/Refund history have ambiguous outstanding:
+  the report returns null for the full outstanding metric, plus the known
+  partial amount and ambiguous invoice counts. No allocations are fabricated.
+- Reconciliation exposure counts unresolved RECONCILIATION_REQUIRED Charges
+  linked to period invoices and sums historical gross Charge amounts. This is
+  neither refunded cash nor accounting-recognized revenue.
+- Cash flow uses indexed Mongo aggregation grouped by Payment method/type and
+  Refund method with safe-integer and conservation checks. Invoice calculations
+  use a bounded 5,000-document read; larger ranges fail with 413. Separate
+  indexes support Billing creation, Payment time, and Refund time; each adds
+  storage and write cost but avoids a compound multikey index over two arrays.
+- This is a near-real-time multi-query read, not an atomic snapshot; concurrent
+  writes can appear in the next report. No report mutates financial records.
+  No time series, dashboard wiring, Shopify, or accounting-recognized revenue /
+  accrual accounting is implemented.

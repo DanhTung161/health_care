@@ -44,6 +44,14 @@ interface PaymentAllocationAmount {
   paymentTransactionId: { toString(): string };
   billingLineItemId: { toString(): string };
   allocatedAmount: number;
+  allocatedAt: Date;
+}
+
+interface RefundAllocationReversalAmount {
+  _id?: { toString(): string };
+  refundTransactionId: { toString(): string };
+  paymentAllocationId: { toString(): string };
+  reversedAmount: number;
 }
 
 export interface BillingCalculationInput {
@@ -73,6 +81,7 @@ interface MutableBillingCalculationTarget
   paymentTransactions: PaymentTransactionAmount[];
   paymentAllocations?: PaymentAllocationAmount[];
   refundTransactions: PaymentTransactionAmount[];
+  refundAllocationReversals?: RefundAllocationReversalAmount[];
   amountPaid: number;
   subtotal: number;
   insurancePaid: number;
@@ -93,6 +102,7 @@ interface BillingAllocationTarget {
   paymentTransactions: PaymentTransactionAmount[];
   paymentAllocations?: PaymentAllocationAmount[];
   refundTransactions: PaymentTransactionAmount[];
+  refundAllocationReversals?: RefundAllocationReversalAmount[];
   effectiveInsurancePaid: number;
   vatAmount: number;
 }
@@ -179,6 +189,11 @@ export interface BillingLineSettlementSummary {
 export interface PlannedPaymentAllocation {
   billingLineItemId: string;
   allocatedAmount: number;
+}
+
+export interface PlannedRefundReversal {
+  paymentAllocationId: string;
+  reversedAmount: number;
 }
 
 interface LinePatientLiability {
@@ -300,9 +315,13 @@ function durableLineSettlement(
       "Billing does not contain durable payment allocations",
     );
   }
-  if (billing.refundTransactions.length > 0) {
+  const reversals = billing.refundAllocationReversals ?? [];
+  if (
+    !Array.isArray(billing.refundAllocationReversals) &&
+    billing.refundTransactions.length > 0
+  ) {
     throw new BillingCalculationError(
-      "Refund allocation is required before an allocation-managed Billing can be recalculated",
+      "Refund history has no durable allocation reversals",
     );
   }
 
@@ -324,8 +343,12 @@ function durableLineSettlement(
   const liabilityByLine = new Map(
     liabilities.map((liability) => [liability.id, liability]),
   );
+  const allLinesById = new Map(
+    billing.lineItems.map((line) => [line._id?.toString(), line]),
+  );
   if (
-    liabilities.some(({ item }) => !item._id) ||
+    billing.lineItems.some((item) => !item._id) ||
+    allLinesById.size !== billing.lineItems.length ||
     liabilityByLine.size !== liabilities.length
   ) {
     throw new BillingCalculationError(
@@ -333,9 +356,9 @@ function durableLineSettlement(
     );
   }
   const allocatedByPayment = new Map<string, number>();
-  const allocatedByLine = new Map<string, number>();
   const allocationIdentities = new Set<string>();
   const allocationIds = new Set<string>();
+  const allocationsById = new Map<string, PaymentAllocationAmount>();
 
   for (const allocation of allocations) {
     const allocationId = allocation._id?.toString();
@@ -350,6 +373,7 @@ function durableLineSettlement(
       throw new BillingCalculationError("Duplicate payment allocation identity");
     }
     allocationIds.add(allocationId);
+    allocationsById.set(allocationId, allocation);
     const pairIdentity = `${paymentId}:${lineId}`;
     if (allocationIdentities.has(pairIdentity)) {
       throw new BillingCalculationError(
@@ -362,9 +386,9 @@ function durableLineSettlement(
         "A payment allocation references a payment outside this Billing",
       );
     }
-    if (!liabilityByLine.has(lineId)) {
+    if (!allLinesById.has(lineId)) {
       throw new BillingCalculationError(
-        "A payment allocation references a missing or VOID Billing line",
+        "A payment allocation references a missing Billing line",
       );
     }
     if (!Number.isSafeInteger(allocation.allocatedAmount) || allocation.allocatedAmount <= 0) {
@@ -379,13 +403,6 @@ function durableLineSettlement(
         "Payment allocation total",
       ),
     );
-    allocatedByLine.set(
-      lineId,
-      checkedSum(
-        [allocatedByLine.get(lineId) ?? 0, allocation.allocatedAmount],
-        "Line allocation total",
-      ),
-    );
   }
 
   for (const [paymentId, paymentAmount] of transactionAmounts) {
@@ -396,8 +413,98 @@ function durableLineSettlement(
     }
   }
 
+  const refundAmounts = new Map<string, number>();
+  for (const refund of billing.refundTransactions) {
+    const id = refund._id?.toString();
+    if (!id || refundAmounts.has(id)) {
+      throw new BillingCalculationError(
+        "A refund transaction has missing or duplicate identity",
+      );
+    }
+    assertVnd(refund.amount, "Refund amount");
+    refundAmounts.set(id, refund.amount);
+  }
+  const reversedByRefund = new Map<string, number>();
+  const reversedByAllocation = new Map<string, number>();
+  const reversalIds = new Set<string>();
+  const reversalPairs = new Set<string>();
+  for (const reversal of reversals) {
+    const id = reversal._id?.toString();
+    const refundId = reversal.refundTransactionId?.toString();
+    const allocationId = reversal.paymentAllocationId?.toString();
+    if (!id || !refundId || !allocationId) {
+      throw new BillingCalculationError(
+        "A refund reversal is missing durable identity",
+      );
+    }
+    const pair = `${refundId}:${allocationId}`;
+    if (reversalIds.has(id) || reversalPairs.has(pair)) {
+      throw new BillingCalculationError("Duplicate refund reversal identity");
+    }
+    reversalIds.add(id);
+    reversalPairs.add(pair);
+    if (!refundAmounts.has(refundId) || !allocationsById.has(allocationId)) {
+      throw new BillingCalculationError(
+        "A refund reversal references a missing Refund or Payment allocation",
+      );
+    }
+    if (!Number.isSafeInteger(reversal.reversedAmount) || reversal.reversedAmount <= 0) {
+      throw new BillingCalculationError(
+        "Refund reversal must be a positive safe integer VND amount",
+      );
+    }
+    reversedByRefund.set(
+      refundId,
+      checkedSum(
+        [reversedByRefund.get(refundId) ?? 0, reversal.reversedAmount],
+        "Refund reversal total",
+      ),
+    );
+    reversedByAllocation.set(
+      allocationId,
+      checkedSum(
+        [reversedByAllocation.get(allocationId) ?? 0, reversal.reversedAmount],
+        "Payment allocation reversal total",
+      ),
+    );
+  }
+  for (const [refundId, refundAmount] of refundAmounts) {
+    if ((reversedByRefund.get(refundId) ?? 0) !== refundAmount) {
+      throw new BillingCalculationError(
+        "Refund reversal total must equal its Refund transaction amount",
+      );
+    }
+  }
+  const effectiveByLine = new Map<string, number>();
+  for (const [allocationId, allocation] of allocationsById) {
+    const reversed = reversedByAllocation.get(allocationId) ?? 0;
+    if (reversed > allocation.allocatedAmount) {
+      throw new BillingCalculationError(
+        "Refund reversal exceeds its original Payment allocation",
+      );
+    }
+    const lineId = allocation.billingLineItemId.toString();
+    effectiveByLine.set(
+      lineId,
+      checkedSum(
+        [effectiveByLine.get(lineId) ?? 0, allocation.allocatedAmount - reversed],
+        "Effective line allocation",
+      ),
+    );
+  }
+  for (const [lineId, line] of allLinesById) {
+    if (
+      line?.financialStatus === "VOID" &&
+      (effectiveByLine.get(lineId ?? "") ?? 0) !== 0
+    ) {
+      throw new BillingCalculationError(
+        "A VOID Billing line retains effective Payment allocation",
+      );
+    }
+  }
+
   const summaries = liabilities.map(({ item, id, patientPayableAmount }) => {
-    const allocatedAmount = allocatedByLine.get(id) ?? 0;
+    const allocatedAmount = effectiveByLine.get(id) ?? 0;
     if (allocatedAmount > patientPayableAmount) {
       throw new BillingCalculationError(
         "Billing line allocation exceeds its patient-payable amount",
@@ -439,6 +546,39 @@ function durableLineSettlement(
       "Invoice allocation total must equal collected payment transactions",
     );
   }
+  const reversedTotal = checkedSum(
+      reversals.map(({ reversedAmount }) => reversedAmount),
+      "Invoice reversal total",
+    );
+  const refundTotal = checkedSum(
+      billing.refundTransactions.map(({ amount }) => amount),
+      "Invoice refund total",
+    );
+  if (reversedTotal !== refundTotal) {
+    throw new BillingCalculationError(
+      "Invoice reversal total must equal refunded transactions",
+    );
+  }
+  const effectiveTotal = checkedSum(
+    [...effectiveByLine.values()],
+    "Effective invoice allocation",
+  );
+  if (effectiveTotal !== paymentTotal - refundTotal) {
+    throw new BillingCalculationError(
+      "Effective allocations do not equal net collected Payment",
+    );
+  }
+  for (const item of billing.lineItems) {
+    if (item.financialStatus === "VOID") {
+      summaries.push({
+        billingLineItemId: item._id!.toString(),
+        patientPayableAmount: 0,
+        allocatedAmount: 0,
+        remainingPatientPayable: 0,
+        paymentStatus: "PENDING_PAYMENT",
+      });
+    }
+  }
   return summaries;
 }
 
@@ -466,6 +606,21 @@ export function initializeDurablePaymentAllocations(
   billing.paymentAllocations = [];
 }
 
+export function getEffectiveAllocatedAmountForBillingLine(
+  billing: BillingAllocationTarget,
+  billingLineItemId: string,
+): number {
+  const summary = getBillingLineSettlementSummaries(billing).find(
+    (item) => item.billingLineItemId === billingLineItemId,
+  );
+  if (!summary || summary.allocatedAmount === null) {
+    throw new BillingCalculationError(
+      "Active Billing line with durable allocation was not found",
+    );
+  }
+  return summary.allocatedAmount;
+}
+
 export function getBillingLineSettlementSummaries(
   billing: BillingAllocationTarget,
 ): BillingLineSettlementSummary[] {
@@ -475,13 +630,25 @@ export function getBillingLineSettlementSummaries(
     billing.vatAmount,
   );
   if (!Array.isArray(billing.paymentAllocations)) {
-    return liabilities.map(({ item, id, patientPayableAmount }) => ({
+    const summaries = liabilities.map(({ item, id, patientPayableAmount }) => ({
       billingLineItemId: id,
       patientPayableAmount,
       allocatedAmount: null,
       remainingPatientPayable: null,
       paymentStatus: item.paymentStatus,
     }));
+    for (const item of billing.lineItems) {
+      if (item.financialStatus === "VOID") {
+        summaries.push({
+          billingLineItemId: item._id?.toString() ?? "",
+          patientPayableAmount: 0,
+          allocatedAmount: null,
+          remainingPatientPayable: null,
+          paymentStatus: "PENDING_PAYMENT",
+        });
+      }
+    }
+    return summaries;
   }
   return durableLineSettlement(billing, liabilities);
 }
@@ -521,6 +688,68 @@ export function planOldestFirstPaymentAllocations(
     );
   }
   return planned;
+}
+
+// Refunds reverse newest remaining gross allocations first, without editing
+// the original Payment or PaymentAllocation records.
+export function planNewestFirstRefundReversals(
+  billing: BillingAllocationTarget,
+  amount: number,
+  billingLineItemId?: string,
+): PlannedRefundReversal[] {
+  if (!Array.isArray(billing.paymentAllocations)) {
+    throw new BillingCalculationError(
+      "Durable Payment allocations are required for Refund reversals",
+    );
+  }
+  if (!Number.isSafeInteger(amount) || amount <= 0) {
+    throw new BillingCalculationError(
+      "Refund reversal amount must be a positive safe integer VND amount",
+    );
+  }
+  getBillingLineSettlementSummaries(billing);
+  const reversedByAllocation = new Map<string, number>();
+  for (const reversal of billing.refundAllocationReversals ?? []) {
+    const id = reversal.paymentAllocationId.toString();
+    reversedByAllocation.set(
+      id,
+      checkedSum(
+        [reversedByAllocation.get(id) ?? 0, reversal.reversedAmount],
+        "Payment allocation reversal total",
+      ),
+    );
+  }
+  const newestFirst = [...billing.paymentAllocations]
+    .filter(
+      (allocation) =>
+        !billingLineItemId ||
+        allocation.billingLineItemId.toString() === billingLineItemId,
+    )
+    .sort(
+      (left, right) =>
+        right.allocatedAt.getTime() - left.allocatedAt.getTime() ||
+        right._id!.toString().localeCompare(left._id!.toString()),
+    );
+  let remaining = amount;
+  const plan: PlannedRefundReversal[] = [];
+  for (const allocation of newestFirst) {
+    const allocationId = allocation._id!.toString();
+    const available =
+      allocation.allocatedAmount -
+      (reversedByAllocation.get(allocationId) ?? 0);
+    const reversedAmount = Math.min(available, remaining);
+    if (reversedAmount > 0) {
+      plan.push({ paymentAllocationId: allocationId, reversedAmount });
+      remaining -= reversedAmount;
+    }
+    if (remaining === 0) break;
+  }
+  if (remaining !== 0) {
+    throw new BillingCalculationError(
+      "Refund exceeds effective Payment allocations available to reverse",
+    );
+  }
+  return plan;
 }
 
 export function getAllocatedAmountForBillingLine(
@@ -676,6 +905,14 @@ export function recalculateBilling(
   billing.refundTransactions = Array.isArray(billing.refundTransactions)
     ? billing.refundTransactions
     : [];
+  if (
+    !Array.isArray(billing.paymentAllocations) &&
+    (billing.refundAllocationReversals?.length ?? 0) > 0
+  ) {
+    throw new BillingCalculationError(
+      "Legacy Billing cannot contain durable Refund reversals",
+    );
+  }
   if (
     billing.paymentTransactions.length === 0 &&
     Number.isSafeInteger(billing.amountPaid) &&

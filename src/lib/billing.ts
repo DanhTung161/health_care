@@ -137,6 +137,7 @@ export async function ensureBillingForAppointment({
           paymentTransactions: [],
           paymentAllocations: [],
           refundTransactions: [],
+          refundAllocationReversals: [],
           insurancePlan: "NONE",
           insuranceOverrideEnabled: false,
           insuranceOverrideAmount: 0,

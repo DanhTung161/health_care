@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 type Method = "CASH" | "BANK_TRANSFER" | "CREDIT_CARD";
 
@@ -39,12 +39,15 @@ export default function BillingSettlementPanel({
   billing: SettlementBillingData;
   onChanged: () => Promise<void>;
 }) {
-  const [amount, setAmount] = useState(String(billing.totals.refundDue));
+  const [amount, setAmount] = useState(
+    billing.totals.refundDue > 0 ? String(billing.totals.refundDue) : "",
+  );
   const [method, setMethod] = useState<Method>("CASH");
   const [reason, setReason] = useState("");
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const pendingRefund = useRef<{ payload: string; key: string } | null>(null);
 
   async function refund(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -58,6 +61,12 @@ export default function BillingSettlementPanel({
     setError("");
     setMessage("");
     try {
+      const payload = JSON.stringify({ amount: parsedAmount, method, reason });
+      const key =
+        pendingRefund.current?.payload === payload
+          ? pendingRefund.current.key
+          : `billing-refund-ui-${crypto.randomUUID()}`;
+      pendingRefund.current = { payload, key };
       const response = await fetch(
         `/api/appointments/${billing.appointment.id}/billing/refunds`,
         {
@@ -65,9 +74,9 @@ export default function BillingSettlementPanel({
           credentials: "same-origin",
           headers: {
             "Content-Type": "application/json",
-            "Idempotency-Key": `billing-refund-ui-${crypto.randomUUID()}`,
+            "Idempotency-Key": key,
           },
-          body: JSON.stringify({ amount: parsedAmount, method, reason }),
+          body: payload,
         },
       );
       const result = (await response.json()) as {
@@ -77,6 +86,7 @@ export default function BillingSettlementPanel({
       if (!response.ok || !result.success) {
         throw new Error(result.error ?? "Unable to process refund.");
       }
+      pendingRefund.current = null;
       setReason("");
       setAmount("");
       setMessage("Refund recorded successfully.");
@@ -135,7 +145,7 @@ export default function BillingSettlementPanel({
       {!completed && !closed && <p className="mt-4 text-sm text-amber-700">The visit must be completed before reconciliation can be finalized.</p>}
       {completed && billing.totals.balanceDue > 0 && !closed && <p className="mt-4 text-sm text-amber-700">Collect the remaining balance before closing this invoice.</p>}
       {completed && !insuranceFinalized && !closed && <p className="mt-4 text-sm text-amber-700">Verify the insurance decision before closing this invoice.</p>}
-      {completed && billing.totals.refundDue > 0 && !closed && (
+      {completed && billing.totals.amountPaid > 0 && !closed && (
         <form onSubmit={refund} className="mt-4 space-y-3 border-t border-slate-100 pt-4">
           <p className="text-sm font-semibold text-slate-800">Process refund</p>
           <input value={amount} onChange={(event) => setAmount(event.target.value)} inputMode="numeric" aria-label="Refund amount" className="h-10 w-full rounded-xl border border-slate-200 px-3 text-sm" />

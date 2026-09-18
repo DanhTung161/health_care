@@ -66,8 +66,16 @@ type DetailRecord = {
     amount: number;
     method: string;
     reason: string;
+    reconciledChargeId?: mongoose.Types.ObjectId;
     processedBy: IdName | null;
     processedAt: Date;
+  }>;
+  refundAllocationReversals?: Array<{
+    _id: mongoose.Types.ObjectId;
+    refundTransactionId: mongoose.Types.ObjectId;
+    paymentAllocationId: mongoose.Types.ObjectId;
+    reversedAmount: number;
+    reversedAt: Date;
   }>;
   insurancePlan: InsurancePlan;
   grossSubtotal: number;
@@ -222,6 +230,8 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
             amount: transaction.amount,
             method: transaction.method,
             reason: transaction.reason,
+            reconciledChargeId:
+              transaction.reconciledChargeId?.toString() ?? null,
             processedBy: transaction.processedBy
               ? {
                   id: transaction.processedBy._id.toString(),
@@ -231,6 +241,15 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
             processedAt: transaction.processedAt.toISOString(),
           }),
         ),
+        refundAllocationReversals: (
+          billing.refundAllocationReversals ?? []
+        ).map((reversal) => ({
+          id: reversal._id.toString(),
+          refundTransactionId: reversal.refundTransactionId.toString(),
+          paymentAllocationId: reversal.paymentAllocationId.toString(),
+          reversedAmount: reversal.reversedAmount,
+          reversedAt: reversal.reversedAt.toISOString(),
+        })),
         insurance: {
           plan: billing.insurancePlan,
           grossSubtotal: billing.grossSubtotal,

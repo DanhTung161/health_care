@@ -580,16 +580,55 @@ item status `COMPLETED` and is not subject to this overlap.
   `doctor-list` and `services` client pages are not modules; it also printed
   the pre-existing middleware-to-proxy deprecation warning.
 
+## Phase 10B: Refund Allocation Reversals and Reconciliation
+
+- Billing now embeds immutable `refundAllocationReversals` containing an ID,
+  Refund transaction ID, original Payment allocation ID, positive safe-integer
+  VND amount, and timestamp. Original Payments and gross allocations are never
+  rewritten. An optional Refund `reconciledChargeId` distinguishes explicit
+  Charge reconciliation from a generic Refund, including idempotent replay.
+- The calculator validates every Refund/reversal and Payment/allocation link:
+  gross allocations equal gross collections; each Refund equals its reversals;
+  total reversals equal total Refunds; an allocation cannot be over-reversed;
+  effective allocations equal net collected money. ACTIVE line settlement is
+  derived from gross allocation minus reversals against the existing
+  insurance/VAT-adjusted patient liability. Historical allocations to VOID
+  lines remain valid only when fully reversed.
+- Generic Refund reverses the newest effective allocations first, ordered by
+  allocation timestamp then ObjectId. It may span allocations and may create
+  a collectible balance; subsequent Payment appends new records rather than
+  restoring old allocations. It cannot target a Billing with an unresolved
+  reconciliation-required Charge. Legacy invoices retain their prior narrow
+  refund-due behavior without fabricated reversal history.
+- One ADMIN/STAFF-only endpoint explicitly reconciles a
+  `RECONCILIATION_REQUIRED` Charge. The server derives the effective amount on
+  that exact line, appends a real Refund and line-targeted reversals, verifies
+  the line is fully reversed, then atomically transitions the Charge and
+  historical Billing line to VOID with server audit. An unpaid or otherwise
+  ambiguous started diagnostic fails safely for separate financial review;
+  no automatic clinical policy or fake Refund is inferred.
+- Payment, Refund, Charge reconciliation, insurance changes, and close retain
+  same-Billing transactional write conflicts. Refund Idempotency-Key replay
+  returns the original Refund/reversals without a new write; changing Refund
+  semantics, including generic versus Charge reconciliation, remains a 409.
+  The existing cashier form reuses its key when retrying the same Refund after
+  an ambiguous response.
+  Close validates reversal conservation and preserves existing Phase 9/10A
+  Charge, insurance, completion, balance, and legacy-ambiguity gates.
+- A focused transaction-capable MongoDB harness passed 52 checks across full,
+  partial, spanning, replayed, concurrent, and post-Refund Payments; over-refund
+  and over-reversal; Charge reconciliation and close; original history; legacy
+  reading; and executable gating. Temporary records and harness files were
+  removed after verification.
+
 ## Next Phase
 
-External review of the Phase 10A durable allocation invariants before Phase
-10B Refund allocation and reconciliation design.
+External review of Phase 10B Refund/reversal and Charge reconciliation
+invariants before any further financial workflow expansion.
 
 ## Recommended Next Step
 
-Design Phase 10B as explicit append-only Refund-to-original-allocation reversal
-records. It should preserve original Payment/allocation history, deterministically
-reduce effective line settlement, resolve `RECONCILIATION_REQUIRED` Charges only
-through audited financial action, remain idempotent and transactional, and keep
-CLOSED Billing immutable. Do not begin Revenue, UI redesign, Result coupling,
-or Shopify work as part of that phase.
+Review the Refund/reversal conservation, explicit Charge reconciliation audit,
+insurance changes after financial history, and the conservative stop for
+unpaid/ambiguous started diagnostics. No Revenue, Result coupling, UI redesign,
+or Shopify behavior is part of this phase.

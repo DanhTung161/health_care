@@ -101,8 +101,17 @@ export interface IBillingRefundTransaction {
   amount: number;
   method: BillingPaymentMethod;
   reason: string;
+  reconciledChargeId?: mongoose.Types.ObjectId;
   processedBy: mongoose.Types.ObjectId;
   processedAt: Date;
+}
+
+export interface IBillingRefundAllocationReversal {
+  _id: mongoose.Types.ObjectId;
+  refundTransactionId: mongoose.Types.ObjectId;
+  paymentAllocationId: mongoose.Types.ObjectId;
+  reversedAmount: number;
+  reversedAt: Date;
 }
 
 export interface IBilling extends Document {
@@ -114,6 +123,7 @@ export interface IBilling extends Document {
   paymentTransactions: IBillingPaymentTransaction[];
   paymentAllocations?: IBillingPaymentAllocation[];
   refundTransactions: IBillingRefundTransaction[];
+  refundAllocationReversals?: IBillingRefundAllocationReversal[];
   subtotal: number;
   insurancePaid: number;
   insurancePlan: InsurancePlan;
@@ -314,6 +324,11 @@ const BillingRefundTransactionSchema = new Schema<IBillingRefundTransaction>(
       maxlength: 500,
       immutable: true,
     },
+    reconciledChargeId: {
+      type: Schema.Types.ObjectId,
+      ref: "Charge",
+      immutable: true,
+    },
     processedBy: {
       type: Schema.Types.ObjectId,
       ref: "User",
@@ -328,6 +343,28 @@ const BillingRefundTransactionSchema = new Schema<IBillingRefundTransaction>(
     },
   },
 );
+
+const BillingRefundAllocationReversalSchema =
+  new Schema<IBillingRefundAllocationReversal>({
+    _id: { type: Schema.Types.ObjectId, auto: true },
+    refundTransactionId: {
+      type: Schema.Types.ObjectId,
+      required: true,
+      immutable: true,
+    },
+    paymentAllocationId: {
+      type: Schema.Types.ObjectId,
+      required: true,
+      immutable: true,
+    },
+    reversedAmount: { ...integerVnd, min: 1, immutable: true },
+    reversedAt: {
+      type: Date,
+      required: true,
+      default: Date.now,
+      immutable: true,
+    },
+  });
 
 BillingLineItemSchema.pre("validate", function calculateLineItemAmount() {
   const amount = this.quantity * this.unitPrice;
@@ -419,6 +456,27 @@ const BillingSchema = new Schema<IBilling>(
           new Set(transactions.map(({ idempotencyKey }) => idempotencyKey))
             .size === transactions.length,
         message: "Refund idempotency keys must be unique",
+      },
+    },
+    refundAllocationReversals: {
+      type: [BillingRefundAllocationReversalSchema],
+      default: undefined,
+      validate: {
+        validator: (
+          reversals: IBillingRefundAllocationReversal[] | undefined,
+        ) => {
+          if (!reversals) return true;
+          const ids = reversals.map(({ _id }) => _id.toString());
+          const pairs = reversals.map(
+            ({ refundTransactionId, paymentAllocationId }) =>
+              `${refundTransactionId.toString()}:${paymentAllocationId.toString()}`,
+          );
+          return (
+            new Set(ids).size === ids.length &&
+            new Set(pairs).size === pairs.length
+          );
+        },
+        message: "Refund reversal identities and refund/allocation pairs must be unique",
       },
     },
     subtotal: integerVnd,
@@ -517,6 +575,10 @@ const cachedBillingFields: Record<string, mongoose.SchemaDefinitionProperty> = {
     required: true,
     default: [],
   },
+  refundAllocationReversals: {
+    type: [BillingRefundAllocationReversalSchema],
+    default: undefined,
+  },
   refundDue: { ...integerVnd, default: 0 },
   billingStatus: {
     type: String,
@@ -553,6 +615,22 @@ const cachedBillingFields: Record<string, mongoose.SchemaDefinitionProperty> = {
 for (const [path, definition] of Object.entries(cachedBillingFields)) {
   if (!Billing.schema.path(path)) {
     Billing.schema.add({ [path]: definition });
+  }
+}
+
+const cachedRefundsPath = Billing.schema.path("refundTransactions");
+if (cachedRefundsPath && "schema" in cachedRefundsPath) {
+  const cachedRefundSchema = (
+    cachedRefundsPath as typeof cachedRefundsPath & { schema: Schema }
+  ).schema;
+  if (!cachedRefundSchema.path("reconciledChargeId")) {
+    cachedRefundSchema.add({
+      reconciledChargeId: {
+        type: Schema.Types.ObjectId,
+        ref: "Charge",
+        immutable: true,
+      },
+    });
   }
 }
 

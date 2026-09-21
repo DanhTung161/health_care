@@ -25,13 +25,15 @@ export async function getArticles(options: { first?: number; after?: string | nu
   return { items: data.articles.edges.map(({ node }) => node), pageInfo: data.articles.pageInfo };
 }
 
-export async function getArticleByHandle(handle: string): Promise<ShopifyArticleDTO | null> {
+export async function getArticleByHandle(handle: string, blogId?: string): Promise<ShopifyArticleDTO | null> {
   if (!/^[a-z0-9][a-z0-9-]{0,254}$/.test(handle)) throw new ShopifyError('INVALID_PAYLOAD', 'Invalid article handle');
+  if (blogId !== undefined && !/^gid:\/\/shopify\/Blog\/\d+$/.test(blogId)) throw new ShopifyError('INVALID_PAYLOAD', 'Invalid blog ID');
+  const blogNumericId = blogId?.slice('gid://shopify/Blog/'.length);
   const data = await shopifyGraphQL<{ articles: Connection<ShopifyArticleDTO> }>(
     `query ArticleByHandle($search: String!) { articles(first: 2, query: $search) { edges { node { ${ARTICLE_FIELDS} } } pageInfo { hasNextPage endCursor } } }`,
-    { search: `handle:${handle}` },
+    { search: `handle:${handle}${blogNumericId ? ` blog_id:${blogNumericId}` : ''}` },
   );
   const exact = data.articles.edges.map(({ node }) => node).filter((article) => article.handle === handle);
-  if (exact.length > 1 || data.articles.pageInfo.hasNextPage) throw new ShopifyError('DATA_INTEGRITY', 'Article handle is ambiguous across blogs');
+  if (exact.length > 1 || (!blogId && data.articles.pageInfo.hasNextPage)) throw new ShopifyError('DATA_INTEGRITY', 'Article handle is ambiguous across blogs');
   return exact[0] ?? null;
 }

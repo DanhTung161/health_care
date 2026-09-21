@@ -88,6 +88,12 @@ test('missing configuration and currency precision', async () => {
   assert.throws(() => toMinorUnits('1.01', 'VND'));
 });
 
+test('Admin configuration safely normalizes a trailing domain slash', () => {
+  configure();
+  process.env.SHOPIFY_SHOP_DOMAIN = 'fixture.myshopify.com/';
+  assert.equal(getShopifyAdminConfig().domain, 'fixture.myshopify.com');
+});
+
 test('Admin API readiness does not require a webhook secret', async () => {
   configure();
   delete process.env.SHOPIFY_WEBHOOK_SECRET;
@@ -131,7 +137,10 @@ test('catalog and content services normalize bounded GraphQL pages', async () =>
     else if (query.includes('Products')) data = { products: { edges: [{ node: product }], pageInfo: { hasNextPage: true, endCursor: 'next' } } };
     else if (query.includes('CollectionByHandle')) data = { collectionByHandle: collection };
     else if (query.includes('Collections')) data = { collections: { edges: [{ node: collection }], pageInfo } };
-    else if (query.includes('ArticleByHandle')) data = { articles: { edges: [{ node: article }], pageInfo } };
+    else if (query.includes('ArticleByHandle')) {
+      assert.equal(JSON.parse(options.body).variables.search, 'handle:welcome blog_id:1');
+      data = { articles: { edges: [{ node: article }], pageInfo } };
+    }
     else if (query.includes('Articles')) data = { articles: { edges: [{ node: article }], pageInfo } };
     else if (query.includes('Blogs')) data = { blogs: { edges: [{ node: blog }], pageInfo } };
     else throw new Error('Unexpected fixture query');
@@ -150,7 +159,7 @@ test('catalog and content services normalize bounded GraphQL pages', async () =>
     assert.equal((await getCollectionByHandle('skin')).handle, 'skin');
     assert.equal((await getBlogs()).items[0].title, 'News');
     assert.equal((await getArticles()).items[0].blog.handle, 'news');
-    assert.equal((await getArticleByHandle('welcome')).summary, '<p>Hi</p>');
+    assert.equal((await getArticleByHandle('welcome', blog.id)).summary, '<p>Hi</p>');
   } finally { global.fetch = originalFetch; }
 });
 

@@ -18,7 +18,7 @@ export function getShopifyStatus(): 'NOT_CONFIGURED' | 'CONFIGURED' {
 }
 
 export function getShopifyAdminConfig() {
-  const domain = process.env.SHOPIFY_SHOP_DOMAIN?.trim().toLowerCase();
+  const domain = process.env.SHOPIFY_SHOP_DOMAIN?.trim().toLowerCase().replace(/\/+$/, '');
   const token = process.env.SHOPIFY_ADMIN_ACCESS_TOKEN?.trim();
   const version = process.env.SHOPIFY_API_VERSION?.trim() || DEFAULT_SHOPIFY_API_VERSION;
   if (!domain || !token) {

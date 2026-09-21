@@ -31,13 +31,17 @@ Module._extensions['.ts'] = function (mod, filename) {
 const { getShopifyStatus, getShopifyAdminConfig, getShopifyWebhookConfig, isShopifyWebhookConfigured, ShopifyError } = require('../src/lib/shopify/config.ts');
 const { shopifyGraphQL } = require('../src/lib/shopify/client.ts');
 const { toMinorUnits } = require('../src/lib/shopify/money.ts');
-const { verifyShopifyWebhook, webhookOrderId } = require('../src/lib/shopify/webhook.ts');
+const {
+  normalizeShopifyWebhookDomain, shopifyWebhookDeliveryId, shopifyWebhookTopic,
+  verifyShopifyWebhook, webhookOrderId,
+} = require('../src/lib/shopify/webhook.ts');
 const { getProducts, getProductByHandle, getCollections, getCollectionByHandle } = require('../src/lib/shopify/catalog.ts');
 const { getBlogs, getArticles, getArticleByHandle } = require('../src/lib/shopify/content.ts');
 const { normalizeOrder, synchronizeShopifyOrder } = require('../src/lib/shopify/orders.ts');
 const { buildCommerceCashFlow, combineCashFlows } = require('../src/lib/shopify/reporting.ts');
 const ShopifyOrder = require('../src/models/ShopifyOrder.ts').default;
 const { GET: getShopifyStatusRoute } = require('../src/app/api/shopify/status/route.ts');
+const { POST: postShopifyWebhook } = require('../src/app/api/shopify/webhook/route.ts');
 
 const originalEnv = {
   SHOPIFY_SHOP_DOMAIN: process.env.SHOPIFY_SHOP_DOMAIN,
@@ -77,6 +81,30 @@ const order = {
   ], test: false, processedAt: '2026-09-17T00:00:00Z', createdAt: '2026-09-17T00:00:00Z', updatedAt: '2026-09-18T00:00:00Z',
 };
 
+function fetchResponse(data, status = 200, headers = {}) {
+  const normalizedHeaders = Object.fromEntries(Object.entries(headers).map(([key, value]) => [key.toLowerCase(), value]));
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    headers: { get: (name) => normalizedHeaders[name.toLowerCase()] ?? null },
+    json: async () => data,
+  };
+}
+
+function webhookRequest(topic, payload, options = {}) {
+  const raw = typeof payload === 'string' ? payload : JSON.stringify(payload);
+  const signature = createHmac('sha256', 'fixture-secret').update(raw).digest('base64');
+  const headers = new Headers({
+    'content-type': 'application/json',
+    'x-shopify-topic': topic,
+    'x-shopify-shop-domain': options.shopDomain ?? 'fixture.myshopify.com',
+    'x-shopify-webhook-id': options.deliveryId ?? 'delivery-1',
+  });
+  if (options.hmac !== null) headers.set('x-shopify-hmac-sha256', options.hmac ?? signature);
+  if (options.deliveryId === null) headers.delete('x-shopify-webhook-id');
+  return new Request('http://localhost/api/shopify/webhook', { method: 'POST', headers, body: raw });
+}
+
 test('missing configuration and currency precision', async () => {
   delete process.env.SHOPIFY_SHOP_DOMAIN;
   assert.equal(getShopifyStatus(), 'NOT_CONFIGURED');
@@ -115,15 +143,143 @@ test('Admin API readiness does not require a webhook secret', async () => {
   finally { global.fetch = originalFetch; configure(); }
 });
 
+test('Admin GraphQL retries only bounded transient read failures', async () => {
+  configure();
+  const originalFetch = global.fetch;
+  try {
+    let calls = 0;
+    global.fetch = async () => {
+      calls += 1;
+      if (calls === 1) throw new Error('temporary network failure');
+      if (calls === 2) return fetchResponse({}, 503, { 'retry-after': '0' });
+      return fetchResponse({ data: { shop: { id: 'gid://shopify/Shop/1' } } });
+    };
+    assert.equal((await shopifyGraphQL('query { shop { id } }')).shop.id, 'gid://shopify/Shop/1');
+    assert.equal(calls, 3);
+
+    calls = 0;
+    global.fetch = async () => {
+      calls += 1;
+      if (calls === 1) return fetchResponse({ errors: [{ extensions: { code: 'THROTTLED' } }] }, 200, { 'retry-after': '0' });
+      return fetchResponse({ data: { shop: { id: 'gid://shopify/Shop/1' } } });
+    };
+    await shopifyGraphQL('query { shop { id } }');
+    assert.equal(calls, 2);
+
+    calls = 0;
+    global.fetch = async () => { calls += 1; return fetchResponse({}, 429, { 'retry-after': '0' }); };
+    await assert.rejects(shopifyGraphQL('query { shop { id } }'), (error) => error instanceof ShopifyError && error.code === 'RATE_LIMIT');
+    assert.equal(calls, 3);
+
+    calls = 0;
+    global.fetch = async () => { calls += 1; return fetchResponse({}, 401); };
+    await assert.rejects(shopifyGraphQL('query { shop { id } }'), (error) => error instanceof ShopifyError && error.code === 'AUTHENTICATION');
+    assert.equal(calls, 1);
+
+    calls = 0;
+    global.fetch = async () => { calls += 1; return fetchResponse({ errors: [{ extensions: { code: 'GRAPHQL_VALIDATION_FAILED' } }] }); };
+    await assert.rejects(shopifyGraphQL('query { shop { missing } }'), (error) => error instanceof ShopifyError && error.code === 'SHOPIFY_API');
+    assert.equal(calls, 1);
+  } finally { global.fetch = originalFetch; }
+});
+
 test('raw webhook HMAC and Order identity', () => {
   configure();
   const body = Buffer.from(JSON.stringify({ id: 1 }));
   const hmac = createHmac('sha256', 'fixture-secret').update(body).digest('base64');
   assert.equal(verifyShopifyWebhook(body, hmac), true);
   assert.equal(verifyShopifyWebhook(body, null), false);
+  assert.equal(verifyShopifyWebhook(body, 'malformed'), false);
   assert.equal(verifyShopifyWebhook(Buffer.from('changed'), hmac), false);
+  assert.equal(normalizeShopifyWebhookDomain(' FIXTURE.MYSHOPIFY.COM/ '), 'fixture.myshopify.com');
+  assert.equal(normalizeShopifyWebhookDomain('https://fixture.myshopify.com'), null);
+  assert.equal(shopifyWebhookTopic('orders/updated'), 'orders/updated');
+  assert.throws(() => shopifyWebhookTopic('products/update'), ShopifyError);
+  assert.equal(shopifyWebhookDeliveryId('delivery:1'), 'delivery:1');
+  assert.throws(() => shopifyWebhookDeliveryId('bad delivery'), ShopifyError);
   assert.equal(webhookOrderId('orders/paid', { id: 1 }), order.id);
   assert.equal(webhookOrderId('refunds/create', { order_id: 1 }), order.id);
+});
+
+test('webhook route authenticates metadata then authoritatively reloads every financial topic', async () => {
+  configure();
+  const originals = { init: ShopifyOrder.init, findOne: ShopifyOrder.findOne, updateOne: ShopifyOrder.updateOne, fetch: global.fetch };
+  let stored = null;
+  let fetches = 0;
+  ShopifyOrder.init = async () => ShopifyOrder;
+  ShopifyOrder.findOne = () => ({ select: async () => stored });
+  ShopifyOrder.updateOne = async (_filter, update) => {
+    stored = update.$set;
+    return { upsertedCount: 1, modifiedCount: 0 };
+  };
+  global.fetch = async () => { fetches += 1; return fetchResponse({ data: { order } }); };
+  try {
+    const fixtures = [
+      ['orders/create', { admin_graphql_api_id: order.id }],
+      ['orders/updated', { id: 1 }],
+      ['orders/paid', { admin_graphql_api_id: order.id }],
+      ['orders/cancelled', { id: '1' }],
+      ['refunds/create', { admin_graphql_api_id: 'gid://shopify/Refund/9', order_id: 1, transactions: [{ amount: '999999999' }] }],
+    ];
+    for (const [index, [topic, payload]] of fixtures.entries()) {
+      const response = await postShopifyWebhook(webhookRequest(topic, payload, { deliveryId: `delivery-${index + 1}` }));
+      assert.equal(response.status, 200);
+      assert.equal((await response.json()).result, index === 0 ? 'CREATED' : 'UNCHANGED');
+    }
+    const duplicate = await postShopifyWebhook(webhookRequest('orders/create', fixtures[0][1], { deliveryId: 'delivery-1' }));
+    assert.equal(duplicate.status, 200);
+    assert.equal((await duplicate.json()).result, 'UNCHANGED');
+    assert.equal(fetches, 6);
+    assert.equal(stored.grossCollectedMinor, 300000);
+    assert.equal(stored.refundedMinor, 100000);
+    assert.equal(stored.transactions.length, 2);
+  } finally {
+    Object.assign(ShopifyOrder, { init: originals.init, findOne: originals.findOne, updateOne: originals.updateOne });
+    global.fetch = originals.fetch;
+  }
+});
+
+test('webhook route rejects unauthenticated or invalid metadata before Admin reload', async () => {
+  configure();
+  const originalFetch = global.fetch;
+  let fetches = 0;
+  global.fetch = async () => { fetches += 1; return fetchResponse({ data: { order } }); };
+  try {
+    assert.equal((await postShopifyWebhook(webhookRequest('orders/updated', { id: 1 }, { hmac: 'invalid' }))).status, 401);
+    assert.equal((await postShopifyWebhook(webhookRequest('orders/updated', { id: 1 }, { hmac: null }))).status, 401);
+    assert.equal((await postShopifyWebhook(webhookRequest('orders/updated', '{', { hmac: 'invalid' }))).status, 401);
+    assert.equal((await postShopifyWebhook(webhookRequest('orders/updated', { id: 1 }, { shopDomain: 'other.myshopify.com' }))).status, 403);
+    assert.equal((await postShopifyWebhook(webhookRequest('products/update', { id: 1 }))).status, 400);
+    assert.equal((await postShopifyWebhook(webhookRequest('orders/updated', '{'))).status, 400);
+    assert.equal((await postShopifyWebhook(webhookRequest('orders/updated', {}))).status, 400);
+    assert.equal((await postShopifyWebhook(webhookRequest('orders/updated', { id: 1 }, { deliveryId: null }))).status, 400);
+    assert.equal((await postShopifyWebhook(webhookRequest('orders/updated', { id: 1 }, { deliveryId: 'bad delivery' }))).status, 400);
+    assert.equal(fetches, 0);
+  } finally { global.fetch = originalFetch; }
+});
+
+test('webhook route preserves retryable infrastructure and integrity HTTP failures', async () => {
+  configure();
+  const originals = { init: ShopifyOrder.init, findOne: ShopifyOrder.findOne, updateOne: ShopifyOrder.updateOne, fetch: global.fetch };
+  try {
+    let fetches = 0;
+    global.fetch = async () => { fetches += 1; return fetchResponse({}, 503, { 'retry-after': '0' }); };
+    const reloadFailure = await postShopifyWebhook(webhookRequest('orders/updated', { id: 1 }));
+    assert.equal(reloadFailure.status, 503);
+    assert.equal(fetches, 3);
+
+    global.fetch = async () => fetchResponse({ data: { order } });
+    ShopifyOrder.init = async () => ShopifyOrder;
+    ShopifyOrder.findOne = () => ({ select: async () => { throw new Error('database unavailable'); } });
+    assert.equal((await postShopifyWebhook(webhookRequest('orders/updated', { id: 1 }))).status, 502);
+
+    const incomplete = { ...order, transactionsCount: { count: order.transactions.length + 1 } };
+    global.fetch = async () => fetchResponse({ data: { order: incomplete } });
+    assert.equal((await postShopifyWebhook(webhookRequest('orders/updated', { id: 1 }))).status, 409);
+  } finally {
+    Object.assign(ShopifyOrder, { init: originals.init, findOne: originals.findOne, updateOne: originals.updateOne });
+    global.fetch = originals.fetch;
+  }
 });
 
 test('catalog and content services normalize bounded GraphQL pages', async () => {
@@ -205,7 +361,7 @@ test('schema requires safe integer money while allowing signed net cash', async 
   }
 });
 
-test('sync retry and stale source timestamp do not duplicate financial effect', async () => {
+test('duplicate and out-of-order sync plus same-timestamp checks do not duplicate financial effect', async () => {
   configure();
   const originals = { init: ShopifyOrder.init, findOne: ShopifyOrder.findOne, updateOne: ShopifyOrder.updateOne, fetch: global.fetch };
   let stored = null;

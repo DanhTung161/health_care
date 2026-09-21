@@ -7,7 +7,7 @@ export default function ClientLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex min-h-screen flex-col bg-white">
+    <div className="storefront flex min-h-screen flex-col">
       <Header />
       <main className="flex-grow">{children}</main>
       <Footer />

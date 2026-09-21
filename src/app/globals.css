@@ -3,18 +3,239 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+
+  /* Storefront foundation — verified against Figma node 2:21. */
+  --storefront-color-ink: #000000;
+  --storefront-color-body: #555555;
+  --storefront-color-body-muted: #999999;
+  --storefront-color-border: #e7e2e2;
+  --storefront-color-primary: #ea7f4a;
+  --storefront-color-secondary: #005350;
+  --storefront-color-surface-tint: #dce9e2;
+  --storefront-color-surface-soft: #f1f7f6;
+  --storefront-color-white: #ffffff;
+  --storefront-font-family: var(--font-schibsted-grotesk), Arial, Helvetica, sans-serif;
+  --storefront-radius-pill: 30px;
+  --storefront-motion-duration: 180ms;
+  --storefront-motion-easing: cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-storefront-ink: var(--storefront-color-ink);
+  --color-storefront-body: var(--storefront-color-body);
+  --color-storefront-muted: var(--storefront-color-body-muted);
+  --color-storefront-border: var(--storefront-color-border);
+  --color-storefront-primary: var(--storefront-color-primary);
+  --color-storefront-secondary: var(--storefront-color-secondary);
+  --color-storefront-surface-tint: var(--storefront-color-surface-tint);
+  --color-storefront-surface-soft: var(--storefront-color-surface-soft);
+  --color-storefront-white: var(--storefront-color-white);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+  --font-storefront: var(--storefront-font-family);
 }
 
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--background); color: var(--foreground); font-family: Arial, Helvetica, sans-serif; }
 button { cursor: pointer; }
+
+/*
+ * Storefront typography and primitives are deliberately scoped. Admin and
+ * clinical routes continue using their existing typography and controls.
+ */
+.storefront {
+  background: var(--storefront-color-white);
+  color: var(--storefront-color-body);
+  color-scheme: light;
+  font-family: var(--storefront-font-family);
+  font-size: 16px;
+  font-weight: 400;
+  line-height: 26px;
+}
+
+.storefront .storefront-heading {
+  margin: 0;
+  color: var(--storefront-color-ink);
+  font-family: var(--storefront-font-family);
+  font-weight: 500;
+}
+
+.storefront .storefront-heading-1 {
+  font-size: 64px;
+  line-height: 72px;
+}
+
+.storefront .storefront-heading-2 {
+  font-size: 48px;
+  line-height: 56px;
+}
+
+.storefront .storefront-heading-3 {
+  font-size: 36px;
+  line-height: 44px;
+}
+
+.storefront .storefront-heading-4 {
+  font-size: 32px;
+  line-height: 40px;
+}
+
+.storefront .storefront-heading-5 {
+  font-size: 24px;
+  line-height: 32px;
+}
+
+.storefront .storefront-heading-6 {
+  font-size: 20px;
+  line-height: 28px;
+}
+
+.storefront .storefront-body {
+  margin: 0;
+  color: var(--storefront-color-body);
+  font-size: 16px;
+  font-weight: 400;
+  line-height: 26px;
+}
+
+.storefront .storefront-min-text {
+  margin: 0;
+  color: var(--storefront-color-body-muted);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 22px;
+}
+
+.storefront-button {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 0;
+  border-radius: var(--storefront-radius-pill);
+  font-family: var(--storefront-font-family);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 22px;
+  text-decoration: none;
+  transition:
+    background-color var(--storefront-motion-duration) var(--storefront-motion-easing),
+    color var(--storefront-motion-duration) var(--storefront-motion-easing),
+    box-shadow var(--storefront-motion-duration) var(--storefront-motion-easing),
+    opacity var(--storefront-motion-duration) var(--storefront-motion-easing);
+}
+
+.storefront-button--large {
+  padding: 18px 30px;
+}
+
+.storefront-button--compact {
+  padding: 14px 25px;
+}
+
+.storefront-button--leading.storefront-button--large {
+  padding: 12px 30px 12px 12px;
+}
+
+.storefront-button--leading.storefront-button--compact {
+  padding: 8px 24px 8px 8px;
+}
+
+.storefront-button--primary {
+  background: var(--storefront-color-primary);
+  color: var(--storefront-color-white);
+}
+
+.storefront-button--link {
+  padding: 0;
+  background: transparent;
+  color: var(--storefront-color-ink);
+}
+
+.storefront-button__icon {
+  display: inline-flex;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  align-items: center;
+  justify-content: center;
+  transition:
+    transform var(--storefront-motion-duration) var(--storefront-motion-easing),
+    background-color var(--storefront-motion-duration) var(--storefront-motion-easing),
+    color var(--storefront-motion-duration) var(--storefront-motion-easing);
+}
+
+.storefront-button--leading .storefront-button__icon {
+  width: 34px;
+  height: 34px;
+  flex-basis: 34px;
+  border-radius: 50%;
+}
+
+.storefront-button--primary.storefront-button--leading .storefront-button__icon {
+  background: var(--storefront-color-white);
+  color: var(--storefront-color-primary);
+}
+
+.storefront-button--link.storefront-button--leading .storefront-button__icon {
+  background: var(--storefront-color-primary);
+  color: var(--storefront-color-white);
+}
+
+.storefront-button:hover:not(:disabled) .storefront-button__icon {
+  transform: translateX(3px);
+}
+
+.storefront-button--leading:hover:not(:disabled) .storefront-button__icon {
+  background: transparent;
+  color: currentColor;
+}
+
+.storefront-button:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--storefront-color-primary) 45%, transparent);
+  outline-offset: 3px;
+}
+
+.storefront-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
+@media (max-width: 640px) {
+  .storefront .storefront-heading-1 {
+    font-size: 44px;
+    line-height: 52px;
+  }
+
+  .storefront .storefront-heading-2 {
+    font-size: 36px;
+    line-height: 44px;
+  }
+
+  .storefront .storefront-heading-3 {
+    font-size: 32px;
+    line-height: 40px;
+  }
+
+  .storefront .storefront-heading-4 {
+    font-size: 28px;
+    line-height: 36px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .storefront-button,
+  .storefront-button__icon {
+    transition-duration: 0.01ms;
+  }
+
+  .storefront-button:hover:not(:disabled) .storefront-button__icon {
+    transform: none;
+  }
+}
 
 .dark {
   --background: #0f172a;

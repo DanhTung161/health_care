@@ -1,16 +1,9 @@
-import Header from "@/components/client/Header";
-import Footer from "@/components/client/Footer";
+import StorefrontShell from "@/components/client/StorefrontShell";
 
 export default function ClientLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  return (
-    <div className="storefront flex min-h-screen flex-col">
-      <Header />
-      <main className="flex-grow">{children}</main>
-      <Footer />
-    </div>
-  );
+  return <StorefrontShell>{children}</StorefrontShell>;
 }

@@ -18,6 +18,14 @@ interface JwtPayload {
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
+const PUBLIC_STOREFRONT_PATHS = new Set([
+  "/",
+  "/search",
+  "/cart",
+  "/shop",
+  "/blog",
+  "/contact",
+]);
 
 function isJwtPayload(value: unknown): value is JwtPayload {
   if (!value || typeof value !== "object") {
@@ -182,6 +190,11 @@ export async function middleware(request: NextRequest) {
   const token = request.cookies.get(AUTH_COOKIE)?.value;
   const session = token ? await verifyJwt(token) : null;
   const hasInvalidToken = Boolean(token) && !session;
+
+  if (PUBLIC_STOREFRONT_PATHS.has(pathname)) {
+    const response = NextResponse.next();
+    return hasInvalidToken ? clearAuthCookie(response) : response;
+  }
 
   if (pathname === "/login") {
     if (session) {

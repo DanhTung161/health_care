@@ -11,7 +11,7 @@ type StorefrontButtonCommonProps = {
   icon?: ReactNode;
   iconPosition?: "leading" | "trailing";
   size?: "large" | "compact";
-  variant?: "primary" | "link";
+  variant?: "primary" | "secondary" | "link";
 };
 
 type StorefrontButtonElementProps = StorefrontButtonCommonProps &

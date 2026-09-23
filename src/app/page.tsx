@@ -3,6 +3,7 @@ import StorefrontAbout from "@/components/client/StorefrontAbout";
 import StorefrontHero from "@/components/client/StorefrontHero";
 import StorefrontMission from "@/components/client/StorefrontMission";
 import StorefrontServices from "@/components/client/StorefrontServices";
+import StorefrontWhyUs from "@/components/client/StorefrontWhyUs";
 
 export default function HomePage() {
   return (
@@ -11,6 +12,7 @@ export default function HomePage() {
       <StorefrontAbout />
       <StorefrontMission />
       <StorefrontServices />
+      <StorefrontWhyUs />
     </StorefrontShell>
   );
 }

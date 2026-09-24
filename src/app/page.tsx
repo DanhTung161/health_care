@@ -8,6 +8,7 @@ import OurTeam from "@/components/client/OurTeam";
 import StorefrontProjects from "@/components/client/StorefrontProjects";
 import StorefrontServices from "@/components/client/StorefrontServices";
 import StorefrontTestimonials from "@/components/client/StorefrontTestimonials";
+import StorefrontTextRun from "@/components/client/StorefrontTextRun";
 import StorefrontWhyUs from "@/components/client/StorefrontWhyUs";
 
 export default function HomePage() {
@@ -23,6 +24,7 @@ export default function HomePage() {
       <OurPricing />
       <OurTeam />
       <StorefrontBlog />
+      <StorefrontTextRun />
     </StorefrontShell>
   );
 }

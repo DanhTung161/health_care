@@ -3440,6 +3440,96 @@ button { cursor: pointer; }
   .storefront-blog__grid { margin-top: 44px; gap: 44px; }
   .storefront-blog__meta { gap: 8px 12px; }
 }
+/* Storefront Homepage Text Run - Figma node 137:86. */
+.storefront-text-run {
+  padding: 88px 0 96px;
+  overflow: hidden;
+  background: var(--storefront-color-white);
+}
+
+.storefront-text-run__viewport {
+  width: calc(100% + 60px);
+  overflow: hidden;
+  transform: translateX(-60px);
+}
+
+.storefront-text-run__track {
+  display: flex;
+  width: max-content;
+  will-change: transform;
+  animation-name: storefront-text-run-marquee;
+  animation-duration: 26s;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+  animation-direction: normal;
+  animation-fill-mode: none;
+  animation-play-state: running;
+}
+
+.storefront-text-run__group {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 40px;
+  padding-right: 96px;
+  color: var(--storefront-color-secondary);
+  font-family: var(--storefront-font-family);
+  font-size: 128px;
+  font-weight: 600;
+  line-height: 136px;
+  text-transform: capitalize;
+  white-space: nowrap;
+}
+
+.storefront-text-run__heart {
+  width: 90px;
+  height: 90px;
+  flex: 0 0 90px;
+}
+
+@keyframes storefront-text-run-marquee {
+  0% { transform: translate3d(0, 0, 0); }
+  100% { transform: translate3d(-50%, 0, 0); }
+}
+
+@media (max-width: 1199px) {
+  .storefront-text-run { padding: 76px 0 84px; }
+  .storefront-text-run__viewport { width: calc(100% + 44px); transform: translateX(-44px); }
+  .storefront-text-run__group {
+    gap: 34px;
+    padding-right: 80px;
+    font-size: 104px;
+    line-height: 112px;
+  }
+  .storefront-text-run__heart { width: 74px; height: 74px; flex-basis: 74px; }
+}
+
+@media (max-width: 767px) {
+  .storefront-text-run { padding: 60px 0 68px; }
+  .storefront-text-run__viewport { width: calc(100% + 28px); transform: translateX(-28px); }
+  .storefront-text-run__track { animation-duration: 22s; }
+  .storefront-text-run__group {
+    gap: 24px;
+    padding-right: 60px;
+    font-size: 72px;
+    line-height: 80px;
+  }
+  .storefront-text-run__heart { width: 52px; height: 52px; flex-basis: 52px; }
+}
+
+@media (max-width: 479px) {
+  .storefront-text-run { padding: 52px 0 58px; }
+  .storefront-text-run__viewport { width: calc(100% + 20px); transform: translateX(-20px); }
+  .storefront-text-run__track { animation-duration: 20s; }
+  .storefront-text-run__group {
+    gap: 20px;
+    padding-right: 48px;
+    font-size: 58px;
+    line-height: 66px;
+  }
+  .storefront-text-run__heart { width: 44px; height: 44px; flex-basis: 44px; }
+}
+
 .dark {
   --background: #0f172a;
   --foreground: #e2e8f0;

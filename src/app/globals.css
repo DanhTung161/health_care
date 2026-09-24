@@ -2281,6 +2281,156 @@ button { cursor: pointer; }
   .storefront-why-us__metric img { width: 68px; height: 68px; flex-basis: 68px; }
 }
 
+/* Storefront Homepage Our Projects - Figma node 107:128. */
+.storefront-projects {
+  padding: 120px 0;
+  overflow: hidden;
+  background: var(--storefront-color-white);
+  color: var(--storefront-color-body);
+}
+
+.storefront-projects__header {
+  display: grid;
+  width: min(calc(100% - 48px), 1290px);
+  min-height: 144px;
+  margin-inline: auto;
+  grid-template-columns: minmax(0, 1fr) 410px;
+  align-items: end;
+  gap: 80px;
+}
+
+.storefront-projects__heading { width: min(100%, 600px); }
+
+.storefront-projects__eyebrow {
+  display: inline-flex;
+  color: var(--storefront-color-secondary);
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 22px;
+  text-transform: capitalize;
+}
+
+.storefront-projects__eyebrow img { display: block; width: 20px; height: 20px; flex: 0 0 20px; }
+
+.storefront .storefront-projects__title {
+  margin: 10px 0 0;
+  color: var(--storefront-color-ink);
+  font-feature-settings: "liga" 0;
+}
+
+.storefront-projects__support { width: 410px; margin: 0 0 1px; }
+
+.storefront-projects__swiper {
+  width: 100%;
+  margin-top: 60px;
+  overflow: visible;
+}
+
+.storefront-projects__swiper .swiper-wrapper { align-items: stretch; }
+
+.storefront-projects__swiper .storefront-projects__slide {
+  width: 630px;
+  height: 480px;
+}
+
+.storefront-projects__card {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  border-radius: 20px;
+  background: var(--storefront-color-secondary);
+  color: var(--storefront-color-white);
+}
+
+.storefront-projects__image {
+  object-fit: cover;
+  object-position: center;
+}
+
+.storefront-projects__overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to bottom, transparent 25.52%, var(--storefront-color-secondary) 100%);
+}
+
+.storefront-projects__card-copy {
+  position: absolute;
+  right: 104px;
+  bottom: 40px;
+  left: 40px;
+}
+
+.storefront-projects__card-copy h3 {
+  margin: 0;
+  color: inherit;
+  font-size: 24px;
+  font-weight: 500;
+  line-height: 32px;
+}
+
+.storefront-projects__card-copy p {
+  margin: 0;
+  color: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 22px;
+}
+
+.storefront-projects__action {
+  position: absolute;
+  right: 40px;
+  bottom: 40px;
+  display: block;
+  width: 48px;
+  height: 48px;
+  opacity: 0;
+  transition: opacity var(--storefront-motion-duration) var(--storefront-motion-easing);
+}
+
+.storefront-projects__action img { display: block; width: 100%; height: 100%; }
+
+.storefront-projects__card:hover .storefront-projects__action,
+.storefront-projects__card:focus-within .storefront-projects__action { opacity: 1; }
+
+@media (max-width: 1199px) {
+  .storefront-projects { padding-block: 96px; }
+  .storefront-projects__header {
+    width: min(calc(100% - 48px), 900px);
+    grid-template-columns: minmax(0, 1fr) 340px;
+    gap: 48px;
+  }
+  .storefront-projects__swiper .storefront-projects__slide { width: min(630px, calc(100vw - 180px)); }
+}
+
+@media (max-width: 991px) {
+  .storefront-projects__header { grid-template-columns: 1fr; align-items: start; gap: 24px; }
+  .storefront-projects__support { width: min(100%, 560px); margin: 0; }
+  .storefront-projects__swiper { margin-top: 48px; }
+}
+
+@media (max-width: 767px) {
+  .storefront-projects { padding-block: 80px; }
+  .storefront-projects__header { width: calc(100% - 48px); }
+  .storefront .storefront-projects__title { font-size: 40px; line-height: 48px; }
+  .storefront-projects__swiper .storefront-projects__slide { width: calc(100vw - 96px); height: auto; aspect-ratio: 21 / 16; }
+  .storefront-projects__card-copy { right: 88px; bottom: 28px; left: 28px; }
+  .storefront-projects__action { right: 28px; bottom: 28px; }
+}
+
+@media (max-width: 479px) {
+  .storefront-projects { padding-block: 64px; }
+  .storefront-projects__header { width: calc(100% - 40px); }
+  .storefront .storefront-projects__title { font-size: 34px; line-height: 42px; }
+  .storefront-projects__swiper .storefront-projects__slide { width: calc(100vw - 64px); }
+  .storefront-projects__card { border-radius: 16px; }
+  .storefront-projects__card-copy { right: 76px; bottom: 24px; left: 24px; }
+  .storefront-projects__card-copy h3 { font-size: 20px; line-height: 28px; }
+  .storefront-projects__action { right: 24px; bottom: 24px; width: 42px; height: 42px; }
+}
+
 .dark {
   --background: #0f172a;
   --foreground: #e2e8f0;

@@ -5,14 +5,16 @@ import Header from "@/components/client/Header";
 
 export default function StorefrontShell({
   children,
+  footer = <Footer />,
 }: {
   children?: ReactNode;
+  footer?: ReactNode;
 }) {
   return (
-    <div className="storefront flex min-h-screen flex-col">
+    <div className="storefront flex min-h-screen flex-col" id="storefront-top">
       <Header />
       <main className="flex-grow">{children}</main>
-      <Footer />
+      {footer}
     </div>
   );
 }

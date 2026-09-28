@@ -26,6 +26,7 @@ const PUBLIC_STOREFRONT_PATHS = new Set([
   "/blog",
   "/contact",
 ]);
+const PUBLIC_API_PREFIXES = ["/api/public/appointments"];
 
 function isJwtPayload(value: unknown): value is JwtPayload {
   if (!value || typeof value !== "object") {
@@ -187,6 +188,9 @@ export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   // Shopify signs the raw webhook body; the Route Handler is the auth boundary.
   if (pathname === '/api/shopify/webhook') return NextResponse.next();
+  if (PUBLIC_API_PREFIXES.some((prefix) => matchesRoute(pathname, prefix))) {
+    return NextResponse.next();
+  }
   const token = request.cookies.get(AUTH_COOKIE)?.value;
   const session = token ? await verifyJwt(token) : null;
   const hasInvalidToken = Boolean(token) && !session;

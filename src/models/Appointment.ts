@@ -11,6 +11,7 @@ export interface IAppointment extends Document {
   timeSlot: string;
   status: AppointmentStatus;
   reason?: string;
+  contactEmail?: string;
   cancellationReason?: string;
   cancelledAt?: Date;
   cancelledBy?: mongoose.Types.ObjectId;
@@ -26,6 +27,7 @@ const AppointmentSchema = new Schema<IAppointment>({
   timeSlot: { type: String, required: true },
   status: { type: String, enum: APPOINTMENT_STATUSES, default: 'PENDING' },
   reason: { type: String },
+  contactEmail: { type: String, trim: true, lowercase: true },
   cancellationReason: { type: String },
   cancelledAt: { type: Date },
   cancelledBy: { type: Schema.Types.ObjectId, ref: 'User' },
@@ -47,7 +49,10 @@ if (statusPath instanceof Schema.Types.String) {
 
 // During development Mongoose reuses an already-compiled model across module
 // reloads. Add fields introduced after that model was first compiled so strict
-// document saves do not silently discard cancellation audit data.
+// document saves do not silently discard them.
+if (!Appointment.schema.path('contactEmail')) {
+  Appointment.schema.add({ contactEmail: { type: String, trim: true, lowercase: true } });
+}
 if (!Appointment.schema.path('cancellationReason')) {
   Appointment.schema.add({ cancellationReason: { type: String } });
 }

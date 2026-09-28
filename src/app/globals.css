@@ -3608,6 +3608,7 @@ button { cursor: pointer; }
   pointer-events: none;
 }
 
+.storefront-appointment__field--doctor,
 .storefront-appointment__field--note { grid-column: 1 / -1; }
 .storefront-appointment__field textarea { display: block; height: 140px; padding: 16px 24px; resize: vertical; border-radius: 20px; }
 
@@ -3635,6 +3636,46 @@ button { cursor: pointer; }
 
 .storefront-appointment__support { max-width: 630px; margin: 30px 0 0; color: var(--storefront-color-white); font-size: 16px; line-height: 26px; }
 .storefront-appointment__form > .storefront-button { width: 224px; margin-top: 48px; }
+
+.storefront .storefront-appointment__field select:disabled {
+  cursor: not-allowed;
+  opacity: 0.68;
+}
+
+.storefront-appointment__option-error,
+.storefront-appointment__feedback {
+  max-width: 630px;
+  margin: 16px 0 0;
+  border-radius: 12px;
+  padding: 10px 14px;
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.storefront-appointment__option-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  background: rgba(255, 255, 255, 0.94);
+  color: #b42318;
+}
+
+.storefront-appointment__option-error button {
+  border: 0;
+  background: transparent;
+  color: var(--storefront-color-primary);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.storefront-appointment__feedback--success { background: #ecfdf3; color: #027a48; }
+.storefront-appointment__feedback--error { background: #fff1f0; color: #b42318; }
+.storefront-appointment__form > .storefront-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
 
 .storefront-appointment__sr-only {
   position: absolute;
@@ -3683,6 +3724,7 @@ button { cursor: pointer; }
   .storefront-appointment__content h2 { font-size: 40px; line-height: 48px; }
   .storefront-appointment__fields { grid-template-columns: 1fr; }
   .storefront-appointment__field--note { grid-column: auto; }
+  .storefront-appointment__field--doctor { grid-column: auto; }
 }
 
 @media (max-width: 479px) {

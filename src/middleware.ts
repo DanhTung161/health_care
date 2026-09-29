@@ -24,6 +24,8 @@ const PUBLIC_STOREFRONT_PATHS = new Set([
   "/cart",
   "/shop",
   "/services",
+  "/doctor-list",
+  "/pricing",
   "/blog",
   "/contact",
 ]);

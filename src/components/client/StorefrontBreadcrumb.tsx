@@ -7,9 +7,11 @@ export interface StorefrontBreadcrumbItem {
 }
 
 export default function StorefrontBreadcrumb({
+  backgroundImage = "/images/storefront/breadcrumb/services-hero.png",
   items,
   title,
 }: {
+  backgroundImage?: string;
   items: readonly StorefrontBreadcrumbItem[];
   title: string;
 }) {
@@ -24,7 +26,7 @@ export default function StorefrontBreadcrumb({
         fill
         preload
         sizes="calc(100vw - 40px)"
-        src="/images/storefront/breadcrumb/services-hero.png"
+        src={backgroundImage}
       />
       <div
         aria-hidden="true"

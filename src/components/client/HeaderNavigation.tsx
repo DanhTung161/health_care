@@ -20,17 +20,14 @@ const navigationItems: readonly NavigationItem[] = [
   {
     label: "Services",
     menuWidth: "compact",
-    children: [
-      { label: "Services 01", href: "/services" },
-      { label: "Service Single" },
-    ],
+    children: [{ label: "Services", href: "/services" }],
   },
   {
     label: "Pages",
     menuWidth: "wide",
     children: [
-      { label: "Our Doctors - Style 01" },
-      { label: "Doctor Single Detail" },
+      { label: "Our Doctors", href: "/doctor-list" },
+      { label: "Our Pricing", href: "/pricing" },
     ],
   },
   { label: "Shop", href: "/shop" },

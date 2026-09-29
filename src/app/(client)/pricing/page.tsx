@@ -1,13 +1,13 @@
 import type { Metadata } from "next";
 
-import OurTeam from "@/components/client/OurTeam";
+import OurPricing from "@/components/client/OurPricing";
 import StorefrontBreadcrumb from "@/components/client/StorefrontBreadcrumb";
 
 export const metadata: Metadata = {
-  title: "Our Doctors | BigMedix",
+  title: "Our Pricing | BigMedix",
 };
 
-export default function DoctorListPage() {
+export default function PricingPage() {
   return (
     <>
       <StorefrontBreadcrumb
@@ -16,9 +16,9 @@ export default function DoctorListPage() {
           { label: "Homepage", href: "/" },
           { label: "Pages" },
         ]}
-        title="Our Doctors"
+        title="Our Pricing"
       />
-      <OurTeam variant="grid" />
+      <OurPricing />
     </>
   );
 }

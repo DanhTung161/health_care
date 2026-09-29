@@ -3356,21 +3356,58 @@ button { cursor: pointer; }
 
 .storefront-team__cta-row { display: flex; margin-top: 60px; justify-content: center; }
 
+.storefront-team--grid {
+  padding: 120px 0;
+  background: var(--storefront-color-white);
+}
+
+.storefront-team--grid .storefront-team__header {
+  display: block;
+  width: min(100%, 540px);
+  min-height: 216px;
+  margin-inline: auto;
+  text-align: center;
+}
+
+.storefront-team--grid .storefront-team__eyebrow { margin-inline: auto; }
+.storefront-team--grid .storefront-team__title { max-width: 521px; margin-inline: auto; }
+.storefront-team--grid .storefront-team__intro { width: 100%; margin-top: 20px; padding-top: 0; }
+
+.storefront-team__grid {
+  display: grid;
+  margin-top: 60px;
+  grid-template-columns: repeat(4, 300px);
+  gap: 30px;
+  justify-content: center;
+}
+
+.storefront-team__grid-item,
+.storefront-team__grid .storefront-team__card { width: 300px; }
+
 @media (max-width: 1199px) {
   .storefront-team { padding: 96px 0 80px; }
   .storefront-team__header { grid-template-columns: minmax(0, 1fr) 410px; gap: 48px; }
+  .storefront-team--grid { padding: 96px 0; }
+  .storefront-team__grid { grid-template-columns: repeat(3, 300px); gap: 24px; }
 }
 
 @media (max-width: 991px) {
   .storefront-team__header { min-height: 0; grid-template-columns: 1fr; gap: 28px; }
   .storefront-team__intro { width: min(100%, 533px); padding-top: 0; }
   .storefront-team__swiper { margin-top: 52px; }
+  .storefront-team--grid .storefront-team__header { min-height: 0; }
+  .storefront-team__grid { margin-top: 52px; grid-template-columns: repeat(2, 300px); }
 }
 
 @media (max-width: 767px) {
   .storefront-team { padding: 80px 0 72px; }
   .storefront .storefront-team__title { font-size: 40px; line-height: 48px; }
   .storefront-team__decor { opacity: 0.65; }
+  .storefront-team--grid { padding: 80px 0; }
+}
+
+@media (max-width: 679px) {
+  .storefront-team__grid { grid-template-columns: 300px; }
 }
 
 @media (max-width: 479px) {
@@ -3379,6 +3416,7 @@ button { cursor: pointer; }
   .storefront .storefront-team__title { font-size: 34px; line-height: 42px; }
   .storefront-team__swiper { margin-top: 44px; }
   .storefront-team__cta-row { margin-top: 48px; }
+  .storefront-team__grid { margin-top: 44px; }
 }
 /* Storefront Homepage Blog - Figma node 1134:3826. */
 .storefront-blog {

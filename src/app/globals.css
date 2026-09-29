@@ -2459,6 +2459,21 @@ button { cursor: pointer; }
   height: 480px;
 }
 
+.storefront-projects__grid {
+  display: grid;
+  width: min(calc(100% - 48px), 1290px);
+  margin: 60px auto 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 30px;
+}
+
+.storefront-projects__grid-item {
+  min-width: 0;
+  aspect-ratio: 21 / 16;
+}
+
+.storefront-projects__grid .storefront-projects__card { height: 100%; }
+
 .storefront-projects__card {
   position: relative;
   width: 100%;
@@ -2527,6 +2542,7 @@ button { cursor: pointer; }
     gap: 48px;
   }
   .storefront-projects__swiper .storefront-projects__slide { width: min(630px, calc(100vw - 180px)); }
+  .storefront-projects__grid { width: min(calc(100% - 48px), 900px); gap: 24px; }
 }
 
 @media (max-width: 991px) {
@@ -2540,6 +2556,7 @@ button { cursor: pointer; }
   .storefront-projects__header { width: calc(100% - 48px); }
   .storefront .storefront-projects__title { font-size: 40px; line-height: 48px; }
   .storefront-projects__swiper .storefront-projects__slide { width: calc(100vw - 96px); height: auto; aspect-ratio: 21 / 16; }
+  .storefront-projects__grid { width: calc(100% - 48px); margin-top: 48px; grid-template-columns: 1fr; gap: 24px; }
   .storefront-projects__card-copy { right: 88px; bottom: 28px; left: 28px; }
   .storefront-projects__action { right: 28px; bottom: 28px; }
 }
@@ -2549,6 +2566,7 @@ button { cursor: pointer; }
   .storefront-projects__header { width: calc(100% - 40px); }
   .storefront .storefront-projects__title { font-size: 34px; line-height: 42px; }
   .storefront-projects__swiper .storefront-projects__slide { width: calc(100vw - 64px); }
+  .storefront-projects__grid { width: calc(100% - 40px); }
   .storefront-projects__card { border-radius: 16px; }
   .storefront-projects__card-copy { right: 76px; bottom: 24px; left: 24px; }
   .storefront-projects__card-copy h3 { font-size: 20px; line-height: 28px; }

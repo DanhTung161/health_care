@@ -44,6 +44,20 @@ const projects: readonly StorefrontProject[] = [
     image: "/images/storefront/projects/hospital-clinician.png",
     alt: "A clinician in a hospital",
   },
+  {
+    title: "Visionary Ventures",
+    category: "Treatments",
+    href: "/shop",
+    image: "/images/storefront/projects/smiling-male-clinician.png",
+    alt: "A smiling male clinician wearing teal scrubs and a stethoscope",
+  },
+  {
+    title: "Visionary Ventures",
+    category: "Treatments",
+    href: "/shop",
+    image: "/images/storefront/projects/experienced-male-clinician.png",
+    alt: "An experienced male clinician wearing teal scrubs in a hospital",
+  },
 ] as const;
 
 function getSlidesOffset(viewportWidth: number) {
@@ -61,9 +75,36 @@ function syncSlidesOffset(swiper: SwiperInstance) {
   swiper.params.slidesOffsetBefore = getSlidesOffset(window.innerWidth);
 }
 
-export default function StorefrontProjects() {
+function ProjectCard({ project }: { project: StorefrontProject }) {
   return (
-    <section className="storefront-projects" aria-labelledby="storefront-projects-title">
+    <article className="storefront-projects__card">
+      <Image
+        className="storefront-projects__image"
+        src={project.image}
+        alt={project.alt}
+        fill
+        sizes="(min-width: 1200px) 630px, (min-width: 768px) 50vw, calc(100vw - 48px)"
+      />
+      <span className="storefront-projects__overlay" aria-hidden="true" />
+      <div className="storefront-projects__card-copy">
+        <h3>{project.title}</h3>
+        <p>{project.category}</p>
+      </div>
+      <Link className="storefront-projects__action" href={project.href} aria-label={`View ${project.title}`}>
+        <Image src="/icons/storefront/projects/action.svg" alt="" width={48} height={48} aria-hidden="true" />
+      </Link>
+    </article>
+  );
+}
+
+export default function StorefrontProjects({ variant = "slider" }: { variant?: "slider" | "grid" }) {
+  const grid = variant === "grid";
+
+  return (
+    <section
+      className={`storefront-projects storefront-projects--${variant}`}
+      aria-labelledby="storefront-projects-title"
+    >
       <header className="storefront-projects__header">
         <div className="storefront-projects__heading">
           <div className="storefront-projects__eyebrow">
@@ -80,48 +121,42 @@ export default function StorefrontProjects() {
         </p>
       </header>
 
-      <Swiper
-        className="storefront-projects__swiper"
-        modules={[A11y]}
-        slidesPerView="auto"
-        spaceBetween={30}
-        initialSlide={1}
-        grabCursor
-        onBeforeInit={syncSlidesOffset}
-        onBeforeResize={syncSlidesOffset}
-        a11y={{
-          containerMessage: "Healthcare projects carousel",
-          itemRoleDescriptionMessage: "Project slide",
-          slideLabelMessage: "{{index}} of {{slidesLength}}",
-        }}
-        breakpoints={{
-          480: { spaceBetween: 20 },
-          768: { spaceBetween: 24 },
-          1200: { spaceBetween: 30 },
-        }}
-      >
-        {projects.map((project, index) => (
-          <SwiperSlide key={`${project.image}-${index}`} className="storefront-projects__slide">
-            <article className="storefront-projects__card">
-              <Image
-                className="storefront-projects__image"
-                src={project.image}
-                alt={project.alt}
-                fill
-                sizes="(min-width: 768px) 630px, calc(100vw - 64px)"
-              />
-              <span className="storefront-projects__overlay" aria-hidden="true" />
-              <div className="storefront-projects__card-copy">
-                <h3>{project.title}</h3>
-                <p>{project.category}</p>
-              </div>
-              <Link className="storefront-projects__action" href={project.href} aria-label={`View ${project.title}`}>
-                <Image src="/icons/storefront/projects/action.svg" alt="" width={48} height={48} aria-hidden="true" />
-              </Link>
-            </article>
-          </SwiperSlide>
-        ))}
-      </Swiper>
+      {grid ? (
+        <div className="storefront-projects__grid" role="list">
+          {projects.map((project) => (
+            <div className="storefront-projects__grid-item" key={project.image} role="listitem">
+              <ProjectCard project={project} />
+            </div>
+          ))}
+        </div>
+      ) : (
+        <Swiper
+          className="storefront-projects__swiper"
+          modules={[A11y]}
+          slidesPerView="auto"
+          spaceBetween={30}
+          initialSlide={1}
+          grabCursor
+          onBeforeInit={syncSlidesOffset}
+          onBeforeResize={syncSlidesOffset}
+          a11y={{
+            containerMessage: "Healthcare projects carousel",
+            itemRoleDescriptionMessage: "Project slide",
+            slideLabelMessage: "{{index}} of {{slidesLength}}",
+          }}
+          breakpoints={{
+            480: { spaceBetween: 20 },
+            768: { spaceBetween: 24 },
+            1200: { spaceBetween: 30 },
+          }}
+        >
+          {projects.map((project) => (
+            <SwiperSlide key={project.image} className="storefront-projects__slide">
+              <ProjectCard project={project} />
+            </SwiperSlide>
+          ))}
+        </Swiper>
+      )}
     </section>
   );
 }

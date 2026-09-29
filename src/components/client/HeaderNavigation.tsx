@@ -21,7 +21,7 @@ const navigationItems: readonly NavigationItem[] = [
     label: "Services",
     menuWidth: "compact",
     children: [
-      { label: "Services 01" },
+      { label: "Services 01", href: "/services" },
       { label: "Service Single" },
     ],
   },

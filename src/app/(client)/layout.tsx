@@ -1,3 +1,4 @@
+import StorefrontFooter from "@/components/client/StorefrontFooter";
 import StorefrontShell from "@/components/client/StorefrontShell";
 
 export default function ClientLayout({
@@ -5,5 +6,9 @@ export default function ClientLayout({
 }: {
   children: React.ReactNode;
 }) {
-  return <StorefrontShell>{children}</StorefrontShell>;
+  return (
+    <StorefrontShell footer={<StorefrontFooter />}>
+      {children}
+    </StorefrontShell>
+  );
 }

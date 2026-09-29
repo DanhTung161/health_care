@@ -1,18 +1,20 @@
+import type { Metadata } from "next";
+
+import StorefrontBreadcrumb from "@/components/client/StorefrontBreadcrumb";
+import StorefrontShop from "@/components/client/StorefrontShop";
+
+export const metadata: Metadata = {
+  title: "Shop | BigMedix",
+};
+
 export default function ShopPage() {
   return (
-    <section
-      aria-labelledby="shop-page-heading"
-      className="mx-auto w-full max-w-[1740px] px-6 py-16"
-    >
-      <h1
-        className="storefront-heading storefront-heading-4"
-        id="shop-page-heading"
-      >
-        Shop
-      </h1>
-      <p className="storefront-body mt-3">
-        The BigMedix storefront shop will be available in a future phase.
-      </p>
-    </section>
+    <>
+      <StorefrontBreadcrumb
+        items={[{ label: "Homepage", href: "/" }, { label: "Shop" }]}
+        title="Shop"
+      />
+      <StorefrontShop />
+    </>
   );
 }

@@ -29,6 +29,7 @@ const navigationItems: readonly NavigationItem[] = [
       { label: "Our Doctors", href: "/doctor-list" },
       { label: "Our Pricing", href: "/pricing" },
       { label: "Project", href: "/projects" },
+      { label: "FAQs", href: "/faqs" },
     ],
   },
   { label: "Shop", href: "/shop" },

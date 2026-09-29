@@ -27,6 +27,7 @@ const PUBLIC_STOREFRONT_PATHS = new Set([
   "/doctor-list",
   "/pricing",
   "/projects",
+  "/faqs",
   "/blog",
   "/contact",
 ]);

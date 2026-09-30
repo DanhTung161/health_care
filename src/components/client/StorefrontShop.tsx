@@ -2,44 +2,16 @@ import Image from "next/image";
 import Link from "next/link";
 
 import StorefrontPagination from "@/components/client/StorefrontPagination";
+import type {
+  StorefrontPaginationState,
+  StorefrontProduct,
+} from "@/lib/shopify/storefront";
 
-interface SampleProduct {
-  compareAtPrice?: string;
-  href: string;
-  image: string;
-  name: string;
-  price: string;
-  sale?: boolean;
-}
-
-const SHOP_PAGE_SIZE = 12;
-
-const SAMPLE_PRODUCTS: readonly SampleProduct[] = [
-  {
-    compareAtPrice: "$149.99",
-    href: "/shop/portable-led-monocular",
-    image: "/images/storefront/shop/portable-led-monocular.png",
-    name: "Portable LED Monocular",
-    price: "$124.50",
-    sale: true,
-  },
-  {
-    href: "/shop/hand-sanitizer-refreshing",
-    image: "/images/storefront/shop/hand-sanitizer-refreshing.png",
-    name: "Hand Sanitizer Refreshing",
-    price: "$124.50 - $139.99",
-  },
-  {
-    compareAtPrice: "$149.99",
-    href: "/shop/basal-body-thermometer",
-    image: "/images/storefront/shop/basal-body-thermometer.png",
-    name: "Basal Body Thermometer",
-    price: "$124.50",
-    sale: true,
-  },
-];
-
-const ACTIONS = [
+const ACTIONS: readonly {
+  icon: string;
+  label: string;
+  quickView?: boolean;
+}[] = [
   {
     icon: "/icons/storefront/shop/wishlist.svg",
     label: "Add to wishlist",
@@ -55,10 +27,18 @@ const ACTIONS = [
   },
 ] as const;
 
-function ProductRating() {
+function ProductRating({
+  rating,
+  reviewCount,
+}: {
+  rating: number;
+  reviewCount?: number;
+}) {
+  const filledStars = Math.max(0, Math.min(5, Math.round(rating)));
+
   return (
     <div
-      aria-label="Rated 4 out of 5 stars from 5 reviews"
+      aria-label={`Rated ${rating} out of 5 stars${reviewCount === undefined ? "" : ` from ${reviewCount} reviews`}`}
       className="storefront-product-card__rating"
       role="img"
     >
@@ -69,7 +49,7 @@ function ProductRating() {
             height={12}
             key={index}
             src={
-              index < 4
+              index < filledStars
                 ? "/icons/storefront/shop/star-filled.svg"
                 : "/icons/storefront/shop/star-empty.svg"
             }
@@ -77,12 +57,14 @@ function ProductRating() {
           />
         ))}
       </span>
-      <span aria-hidden="true">(5)</span>
+      {reviewCount === undefined ? null : (
+        <span aria-hidden="true">({reviewCount})</span>
+      )}
     </div>
   );
 }
 
-function StorefrontProductCard({ product }: { product: SampleProduct }) {
+function StorefrontProductCard({ product }: { product: StorefrontProduct }) {
   return (
     <article className="storefront-product-card">
       <div className="storefront-product-card__media">
@@ -91,13 +73,19 @@ function StorefrontProductCard({ product }: { product: SampleProduct }) {
           className="storefront-product-card__media-link"
           href={product.href}
         >
-          <Image
-            alt={product.name}
-            className="storefront-product-card__image"
-            fill
-            sizes="300px"
-            src={product.image}
-          />
+          {product.image ? (
+            <Image
+              alt={product.image.alt}
+              className="storefront-product-card__image"
+              fill
+              sizes="300px"
+              src={product.image.url}
+            />
+          ) : (
+            <span className="storefront-product-card__image-placeholder">
+              No image available
+            </span>
+          )}
         </Link>
 
         {product.sale ? (
@@ -157,31 +145,64 @@ function StorefrontProductCard({ product }: { product: SampleProduct }) {
         <h2>
           <Link href={product.href}>{product.name}</Link>
         </h2>
-        <ProductRating />
-        <p
-          className={
-            product.compareAtPrice
-              ? "storefront-product-card__price storefront-product-card__price--sale"
-              : "storefront-product-card__price"
-          }
-        >
-          <span>{product.price}</span>
-          {product.compareAtPrice ? <del>{product.compareAtPrice}</del> : null}
-        </p>
+        {product.rating === undefined ? null : (
+          <ProductRating
+            rating={product.rating}
+            reviewCount={product.reviewCount}
+          />
+        )}
+        {product.price ? (
+          <p
+            className={
+              product.compareAtPrice
+                ? "storefront-product-card__price storefront-product-card__price--sale"
+                : "storefront-product-card__price"
+            }
+          >
+            <span>{product.price}</span>
+            {product.compareAtPrice ? (
+              <del>{product.compareAtPrice}</del>
+            ) : null}
+          </p>
+        ) : null}
       </div>
     </article>
   );
 }
 
-export default function StorefrontShop() {
+export default function StorefrontShop({
+  error,
+  pagination,
+  products,
+}: {
+  error?: string;
+  pagination: StorefrontPaginationState | null;
+  products: readonly StorefrontProduct[];
+}) {
   return (
-    <section aria-label="Sample products" className="storefront-shop">
-      <div className="storefront-shop__grid">
-        {SAMPLE_PRODUCTS.slice(0, SHOP_PAGE_SIZE).map((product) => (
-          <StorefrontProductCard key={product.name} product={product} />
-        ))}
-      </div>
-      <StorefrontPagination currentPage={1} totalPages={4} />
+    <section aria-label="Products" className="storefront-shop">
+      {error ? (
+        <p className="storefront-shop__state storefront-shop__state--error" role="alert">
+          {error}
+        </p>
+      ) : products.length === 0 ? (
+        <p className="storefront-shop__state">No products available.</p>
+      ) : (
+        <>
+          <div className="storefront-shop__grid">
+            {products.map((product) => (
+              <StorefrontProductCard key={product.id} product={product} />
+            ))}
+          </div>
+          {pagination ? (
+            <StorefrontPagination
+              currentPage={pagination.currentPage}
+              next={pagination.next}
+              previous={pagination.previous}
+            />
+          ) : null}
+        </>
+      )}
     </section>
   );
 }

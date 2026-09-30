@@ -31,3 +31,18 @@ export function safeMoneySum(values: number[]): number {
   if (total > BigInt(Number.MAX_SAFE_INTEGER)) throw new ShopifyError('DATA_INTEGRITY', 'Shopify money total exceeds safe integer range');
   return Number(total);
 }
+
+
+export function formatShopifyMoney(
+  amount: string,
+  currencyCode: string,
+  locale = 'en-US',
+): string {
+  const minor = toMinorUnits(amount, currencyCode);
+  const digits = currencyMinorDigits(currencyCode);
+  const divisor = 10 ** digits;
+  return new Intl.NumberFormat(locale, {
+    currency: currencyCode,
+    style: 'currency',
+  }).format(minor / divisor);
+}

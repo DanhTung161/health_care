@@ -1,64 +1,81 @@
 import Image from "next/image";
 import Link from "next/link";
 
-interface StorefrontPaginationProps {
-  basePath?: string;
-  currentPage: number;
-  totalPages: number;
+interface PaginationLink {
+  href: string;
+  page: number;
 }
 
-function pageHref(basePath: string, page: number) {
-  return page === 1 ? basePath : `${basePath}?page=${page}`;
+interface StorefrontPaginationProps {
+  currentPage: number;
+  next?: PaginationLink;
+  previous?: PaginationLink;
 }
 
 export default function StorefrontPagination({
-  basePath = "/shop",
   currentPage,
-  totalPages,
+  next,
+  previous,
 }: StorefrontPaginationProps) {
-  const pages = Array.from({ length: totalPages }, (_, index) => index + 1);
-  const previousPage = Math.max(1, currentPage - 1);
-  const nextPage = Math.min(totalPages, currentPage + 1);
+  const pages = [
+    ...(previous ? [previous] : []),
+    { href: "", page: currentPage },
+    ...(next ? [next] : []),
+  ];
 
   return (
     <nav aria-label="Product pagination" className="storefront-pagination">
-      <Link
-        aria-label="Previous page"
-        className="storefront-pagination__control storefront-pagination__arrow"
-        href={pageHref(basePath, previousPage)}
-      >
-        <Image
-          alt=""
-          height={40}
-          src="/icons/storefront/shop/pagination-previous.svg"
-          width={40}
-        />
-      </Link>
-
-      {pages.map((page) => (
+      {previous ? (
         <Link
-          aria-current={page === currentPage ? "page" : undefined}
-          aria-label={`Page ${page}`}
-          className="storefront-pagination__control"
-          href={pageHref(basePath, page)}
-          key={page}
+          aria-label="Previous page"
+          className="storefront-pagination__control storefront-pagination__arrow"
+          href={previous.href}
         >
-          {page}
+          <Image
+            alt=""
+            height={40}
+            src="/icons/storefront/shop/pagination-previous.svg"
+            width={40}
+          />
         </Link>
-      ))}
+      ) : null}
 
-      <Link
-        aria-label="Next page"
-        className="storefront-pagination__control storefront-pagination__arrow"
-        href={pageHref(basePath, nextPage)}
-      >
-        <Image
-          alt=""
-          height={40}
-          src="/icons/storefront/shop/pagination-next.svg"
-          width={40}
-        />
-      </Link>
+      {pages.map((item) =>
+        item.page === currentPage ? (
+          <span
+            aria-current="page"
+            aria-label={`Page ${item.page}`}
+            className="storefront-pagination__control"
+            key={item.page}
+          >
+            {item.page}
+          </span>
+        ) : (
+          <Link
+            aria-label={`Page ${item.page}`}
+            className="storefront-pagination__control"
+            href={item.href}
+            key={item.page}
+          >
+            {item.page}
+          </Link>
+        ),
+      )}
+
+      {next ? (
+        <Link
+          aria-label="Next page"
+          className="storefront-pagination__control storefront-pagination__arrow"
+          href={next.href}
+        >
+          <Image
+            alt=""
+            height={40}
+            src="/icons/storefront/shop/pagination-next.svg"
+            width={40}
+          />
+        </Link>
+      ) : null}
     </nav>
   );
 }

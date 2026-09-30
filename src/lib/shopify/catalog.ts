@@ -38,6 +38,10 @@ export interface ShopifyProductPageOptions {
   query?: string | null;
 }
 
+export type ShopifyProductWithCurrency = ShopifyProductDTO & {
+  currencyCode: string;
+};
+
 const MAX_STOREFRONT_PRODUCT_PAGE_SIZE = 12;
 const PRODUCT_FIELDS = `id handle title description descriptionHtml vendor productType status tags
   category { id name fullName } createdAt updatedAt seo { title description }
@@ -135,10 +139,36 @@ export async function getProducts(options: ShopifyProductPageOptions = {}): Prom
   };
 }
 
-export async function getProductByHandle(handle: string): Promise<ShopifyProductDTO | null> {
+export function getProductByHandle(
+  handle: string,
+  options: { includeCurrency: true },
+): Promise<ShopifyProductWithCurrency | null>;
+export function getProductByHandle(
+  handle: string,
+  options?: { includeCurrency?: false },
+): Promise<ShopifyProductDTO | null>;
+export async function getProductByHandle(
+  handle: string,
+  options: { includeCurrency?: boolean } = {},
+): Promise<ShopifyProductDTO | ShopifyProductWithCurrency | null> {
   if (!/^[a-z0-9][a-z0-9-]{0,254}$/.test(handle)) throw new ShopifyError('INVALID_PAYLOAD', 'Invalid product handle');
+
+  if (options.includeCurrency) {
+    const data = await shopifyGraphQL<{
+      shop: { currencyCode: string };
+      productByHandle: RawProduct | null;
+    }>(
+      `query ProductByHandleWithCurrency($handle: String!) { shop { currencyCode } productByHandle: productByIdentifier(identifier: { handle: $handle }) { ${PRODUCT_FIELDS} } }`,
+      { handle },
+    );
+    return data.productByHandle
+      ? { ...productDTO(data.productByHandle), currencyCode: data.shop.currencyCode }
+      : null;
+  }
+
   const data = await shopifyGraphQL<{ productByHandle: RawProduct | null }>(
-    `query ProductByHandle($handle: String!) { productByHandle: productByIdentifier(identifier: { handle: $handle }) { ${PRODUCT_FIELDS} } }`, { handle },
+    `query ProductByHandle($handle: String!) { productByHandle: productByIdentifier(identifier: { handle: $handle }) { ${PRODUCT_FIELDS} } }`,
+    { handle },
   );
   return data.productByHandle ? productDTO(data.productByHandle) : null;
 }

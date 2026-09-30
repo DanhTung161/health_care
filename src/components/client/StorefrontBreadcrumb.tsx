@@ -9,16 +9,23 @@ export interface StorefrontBreadcrumbItem {
 export default function StorefrontBreadcrumb({
   backgroundImage = "/images/storefront/breadcrumb/services-hero.png",
   items,
+  showTitle = true,
   title,
 }: {
   backgroundImage?: string;
   items: readonly StorefrontBreadcrumbItem[];
+  showTitle?: boolean;
   title: string;
 }) {
   return (
     <section
-      aria-labelledby="storefront-breadcrumb-title"
-      className="storefront-breadcrumb"
+      aria-label={showTitle ? undefined : title}
+      aria-labelledby={showTitle ? "storefront-breadcrumb-title" : undefined}
+      className={
+        showTitle
+          ? "storefront-breadcrumb"
+          : "storefront-breadcrumb storefront-breadcrumb--titleless"
+      }
     >
       <Image
         alt=""
@@ -34,11 +41,11 @@ export default function StorefrontBreadcrumb({
       />
 
       <div className="storefront-breadcrumb__content">
-        <h1 id="storefront-breadcrumb-title">{title}</h1>
+        {showTitle ? <h1 id="storefront-breadcrumb-title">{title}</h1> : null}
         <nav aria-label="Breadcrumb">
           <ol>
             {items.map((item, index) => (
-              <li key={item.label}>
+              <li key={`${item.label}-${index}`}>
                 {item.href ? (
                   <Link href={item.href}>{item.label}</Link>
                 ) : (

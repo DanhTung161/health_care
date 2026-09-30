@@ -1,20 +1,27 @@
 import 'server-only';
 
-import type { ShopifyProductPageInfo, ShopifyProductPageOptions } from '@/lib/shopify/catalog';
+import type {
+  ShopifyProductPageInfo,
+  ShopifyProductPageOptions,
+  ShopifyProductWithCurrency,
+} from '@/lib/shopify/catalog';
 import { ShopifyError } from '@/lib/shopify/config';
 import { formatShopifyMoney, toMinorUnits } from '@/lib/shopify/money';
 import type { ShopifyImageDTO, ShopifyProductDTO } from '@/lib/shopify/types';
 
 export const SHOP_PAGE_SIZE = 12;
 
+export interface StorefrontImage {
+  alt: string;
+  id: string;
+  url: string;
+}
+
 export interface StorefrontProduct {
   compareAtPrice?: string;
   href: string;
   id: string;
-  image?: {
-    alt: string;
-    url: string;
-  };
+  image?: StorefrontImage;
   name: string;
   price?: string;
   rating?: number;
@@ -107,14 +114,14 @@ export function storefrontPagination(
   return previous || next ? { currentPage: page, next, previous } : null;
 }
 
-function safeImage(image: ShopifyImageDTO | undefined, productTitle: string): StorefrontProduct['image'] {
+function safeImage(image: ShopifyImageDTO | undefined, productTitle: string): StorefrontImage | undefined {
   if (!image) return undefined;
   try {
     const url = new URL(image.url);
     if (url.protocol !== 'https:' || url.hostname !== 'cdn.shopify.com' || !url.pathname.startsWith('/s/files/')) {
       return undefined;
     }
-    return { alt: image.altText?.trim() || productTitle, url: url.href };
+    return { alt: image.altText?.trim() || productTitle, id: image.id, url: url.href };
   } catch {
     return undefined;
   }
@@ -161,5 +168,61 @@ export function mapShopifyProductToCardProduct(
     id: product.id,
     image: safeImage(product.media[0], product.title),
     name: product.title,
+  };
+}
+export interface StorefrontProductDetail {
+  available: boolean;
+  category?: string;
+  compareAtPrice?: string;
+  currencyCode: string;
+  description: string;
+  handle: string;
+  id: string;
+  images: StorefrontImage[];
+  name: string;
+  price?: string;
+  sale: boolean;
+  selectedOptions: { name: string; value: string }[];
+  sku?: string;
+  tags: string[];
+}
+
+export function mapShopifyProductToDetail(
+  product: ShopifyProductWithCurrency,
+): StorefrontProductDetail {
+  const selectedVariant = product.variants.find((variant) => variant.availableForSale)
+    ?? product.variants[0];
+  const priceMinor = selectedVariant
+    ? toMinorUnits(selectedVariant.price, product.currencyCode)
+    : undefined;
+  const compareMinor = selectedVariant?.compareAtPrice
+    ? toMinorUnits(selectedVariant.compareAtPrice, product.currencyCode)
+    : undefined;
+  const sale = priceMinor !== undefined
+    && compareMinor !== undefined
+    && compareMinor > priceMinor;
+
+  return {
+    available: selectedVariant?.availableForSale ?? false,
+    category: product.category?.name.trim() || product.productType.trim() || undefined,
+    compareAtPrice: sale
+      ? formatShopifyMoney(selectedVariant!.compareAtPrice!, product.currencyCode)
+      : undefined,
+    currencyCode: product.currencyCode,
+    description: product.description.trim(),
+    handle: product.handle,
+    id: product.id,
+    images: product.media.flatMap((image) => {
+      const normalized = safeImage(image, product.title);
+      return normalized ? [normalized] : [];
+    }),
+    name: product.title,
+    price: selectedVariant
+      ? formatShopifyMoney(selectedVariant.price, product.currencyCode)
+      : undefined,
+    sale,
+    selectedOptions: selectedVariant?.selectedOptions ?? [],
+    sku: selectedVariant?.sku?.trim() || undefined,
+    tags: product.tags.map((tag) => tag.trim()).filter(Boolean),
   };
 }

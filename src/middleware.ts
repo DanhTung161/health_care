@@ -200,7 +200,7 @@ export async function middleware(request: NextRequest) {
   const session = token ? await verifyJwt(token) : null;
   const hasInvalidToken = Boolean(token) && !session;
 
-  if (PUBLIC_STOREFRONT_PATHS.has(pathname)) {
+  if (PUBLIC_STOREFRONT_PATHS.has(pathname) || matchesRoute(pathname, "/shop")) {
     const response = NextResponse.next();
     return hasInvalidToken ? clearAuthCookie(response) : response;
   }

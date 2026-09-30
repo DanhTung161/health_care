@@ -288,9 +288,11 @@ test('catalog and content services normalize bounded GraphQL pages', async () =>
   global.fetch = async (_url, options) => {
     const { query } = JSON.parse(options.body);
     let data;
-    if (query.includes('ProductByHandle')) data = { productByHandle: product };
+    if (query.includes('ProductByHandle')) data = query.includes('shop { currencyCode }')
+      ? { shop: { currencyCode: 'USD' }, productByHandle: product }
+      : { productByHandle: product };
     else if (query.includes('CollectionProducts')) data = { collection: { products: { edges: [{ node: product }], pageInfo } } };
-    else if (query.includes('Products')) data = { products: { edges: [{ node: product }], pageInfo: { hasNextPage: true, endCursor: 'next' } } };
+    else if (query.includes('Products')) data = { shop: { currencyCode: 'USD' }, products: { edges: [{ node: product }], pageInfo: { hasNextPage: true, endCursor: 'next' } } };
     else if (query.includes('CollectionByHandle')) data = { collectionByHandle: collection };
     else if (query.includes('Collections')) data = { collections: { edges: [{ node: collection }], pageInfo } };
     else if (query.includes('ArticleByHandle')) {
@@ -311,6 +313,8 @@ test('catalog and content services normalize bounded GraphQL pages', async () =>
     assert.equal(products.items[0].variants[0].selectedOptions[0].value, 'S');
     assert.equal(products.items[0].media[0].url, image.url);
     assert.equal((await getProductByHandle('sample')).handle, 'sample');
+    const productDetail = await getProductByHandle('sample', { includeCurrency: true });
+    assert.equal(productDetail.currencyCode, 'USD');
     assert.equal((await getCollections()).items[0].image.url, image.url);
     assert.equal((await getCollectionByHandle('skin')).handle, 'skin');
     assert.equal((await getBlogs()).items[0].title, 'News');

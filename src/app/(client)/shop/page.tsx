@@ -50,6 +50,7 @@ export default async function ShopPage({ searchParams }: ShopPageProps) {
   return (
     <>
       <StorefrontBreadcrumb
+        backgroundImage="/images/storefront/doctor-list/breadcrumb-hero.png"
         items={[{ label: "Homepage", href: "/" }, { label: "Shop" }]}
         title="Shop"
       />

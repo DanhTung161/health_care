@@ -3873,16 +3873,15 @@ button { cursor: pointer; }
   margin: 0;
 }
 
-.storefront-blog__grid {
-  display: grid;
+.storefront-blog__swiper {
   margin-top: 60px;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 30px;
 }
 
+.storefront-blog__slide { height: auto; }
 .storefront-blog__card { min-width: 0; }
 
 .storefront-blog__image-frame {
+  display: block;
   position: relative;
   width: 100%;
   aspect-ratio: 410 / 300;
@@ -3890,9 +3889,38 @@ button { cursor: pointer; }
   border-radius: 20px;
 }
 
+.storefront-blog__image-link {
+  color: inherit;
+  text-decoration: none;
+}
+
+.storefront-blog__image-link:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--storefront-color-primary) 45%, transparent);
+  outline-offset: 3px;
+}
+
 .storefront-blog__image-frame img {
   object-fit: cover;
   object-position: center;
+}
+
+.storefront-blog__image-placeholder {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  place-items: center;
+  padding: 24px;
+  background: #f3f3f3;
+  color: var(--storefront-color-body-muted);
+  text-align: center;
+}
+
+.storefront-blog__state {
+  margin-top: 60px;
+  padding: 40px 24px;
+  border-radius: 20px;
+  background: #f7f7f7;
+  text-align: center;
 }
 
 .storefront-blog__meta {
@@ -3929,6 +3957,28 @@ button { cursor: pointer; }
 .storefront .storefront-blog__article-title {
   min-height: 64px;
   margin-top: 14px;
+}
+
+.storefront-blog__article-title-link {
+  display: -webkit-box;
+  overflow: hidden;
+  color: inherit;
+  text-decoration: none;
+  transition: color var(--storefront-motion-duration) var(--storefront-motion-easing);
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+
+.storefront-blog__article-title-link:hover,
+.storefront-blog__article-title-link:focus-visible {
+  color: var(--storefront-color-primary);
+}
+
+.storefront-blog__article-title-link:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--storefront-color-primary) 45%, transparent);
+  outline-offset: 3px;
+  border-radius: 4px;
 }
 
 .storefront-blog__excerpt {
@@ -3971,10 +4021,6 @@ button { cursor: pointer; }
 @media (max-width: 1199px) {
   .storefront-blog { padding: 96px 0; }
   .storefront-blog__header { grid-template-columns: minmax(0, 1fr) 410px; gap: 48px; }
-  .storefront-blog__grid {
-    grid-template-columns: repeat(2, minmax(0, 410px));
-    justify-content: center;
-  }
 }
 
 @media (max-width: 991px) {
@@ -3987,13 +4033,13 @@ button { cursor: pointer; }
     width: min(100%, 540px);
     padding-top: 0;
   }
-  .storefront-blog__grid { margin-top: 52px; }
+  .storefront-blog__swiper,
+  .storefront-blog__state { margin-top: 52px; }
 }
 
 @media (max-width: 767px) {
   .storefront-blog { padding: 80px 0; }
   .storefront .storefront-blog__title { font-size: 40px; line-height: 48px; }
-  .storefront-blog__grid { grid-template-columns: minmax(0, 100%); }
   .storefront .storefront-blog__article-title,
   .storefront-blog__excerpt { min-height: 0; }
 }
@@ -4002,9 +4048,49 @@ button { cursor: pointer; }
   .storefront-blog { padding: 64px 0; }
   .storefront-blog__container { width: calc(100% - 40px); }
   .storefront .storefront-blog__title { font-size: 34px; line-height: 42px; }
-  .storefront-blog__grid { margin-top: 44px; gap: 44px; }
+  .storefront-blog__swiper,
+  .storefront-blog__state { margin-top: 44px; }
   .storefront-blog__meta { gap: 8px 12px; }
 }
+
+/* Public Blog Grid - Figma node 356:3833. */
+.storefront-blog-page {
+  padding: 120px 0;
+  background: var(--storefront-color-white);
+}
+
+.storefront-blog-page__container {
+  width: min(calc(100% - 48px), 1290px);
+  margin-inline: auto;
+}
+
+.storefront-blog-page__grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  column-gap: 30px;
+  row-gap: 40px;
+}
+
+.storefront-blog-page__state { margin-top: 0; }
+
+@media (max-width: 1199px) {
+  .storefront-blog-page { padding: 96px 0; }
+  .storefront-blog-page__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 24px;
+  }
+}
+
+@media (max-width: 767px) {
+  .storefront-blog-page { padding: 80px 0; }
+  .storefront-blog-page__grid { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (max-width: 479px) {
+  .storefront-blog-page { padding: 64px 0; }
+  .storefront-blog-page__container { width: calc(100% - 40px); }
+}
+
 /* Storefront Homepage Appointment - Figma node 129:344. */
 .storefront-appointment {
   position: relative;

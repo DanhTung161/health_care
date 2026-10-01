@@ -1,12 +1,30 @@
 import 'server-only';
 import { getShopifyAdminConfig, ShopifyError } from '@/lib/shopify/config';
 
-type GraphQLError = { message?: string; extensions?: { code?: string } };
+type GraphQLError = {
+  message?: string;
+  path?: unknown;
+  extensions?: { code?: string };
+};
 
 const MAX_ATTEMPTS = 3;
 const BASE_RETRY_DELAY_MS = 100;
 const MAX_RETRY_DELAY_MS = 2_000;
 const RETRYABLE_HTTP_STATUSES = new Set([429, 500, 502, 503, 504]);
+
+function graphQLErrorDetails(error: GraphQLError | undefined) {
+  if (!error) return undefined;
+  const graphqlMessage = typeof error.message === 'string'
+    ? error.message.replace(/[\u0000-\u001f\u007f]+/g, ' ').trim().slice(0, 300)
+    : undefined;
+  const graphqlCode = typeof error.extensions?.code === 'string'
+    ? error.extensions.code.replace(/[^A-Z0-9_:-]/gi, '').slice(0, 80)
+    : undefined;
+  const path = Array.isArray(error.path)
+    ? error.path.filter((segment): segment is string | number => typeof segment === 'string' || typeof segment === 'number').slice(0, 20)
+    : undefined;
+  return { graphqlCode, graphqlMessage, path };
+}
 
 function retryDelayMs(response: Response | null, attempt: number): number {
   const fallback = Math.min(BASE_RETRY_DELAY_MS * (2 ** attempt), MAX_RETRY_DELAY_MS);
@@ -66,7 +84,11 @@ export async function shopifyGraphQL<T>(query: string, variables: Record<string,
         await waitBeforeRetry(response, attempt);
         continue;
       }
-      throw new ShopifyError(rateLimit ? 'RATE_LIMIT' : 'SHOPIFY_API', rateLimit ? 'Shopify rate limit reached' : 'Shopify query failed');
+      throw new ShopifyError(
+        rateLimit ? 'RATE_LIMIT' : 'SHOPIFY_API',
+        rateLimit ? 'Shopify rate limit reached' : 'Shopify query failed',
+        graphQLErrorDetails(payload.errors[0]),
+      );
     }
     if (!payload.data) throw new ShopifyError('INVALID_PAYLOAD', 'Shopify response has no data');
     return payload.data;

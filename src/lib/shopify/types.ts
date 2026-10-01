@@ -20,9 +20,14 @@ export type ShopifyCollectionDTO = {
   seo: { title: string | null; description: string | null };
 };
 export type ShopifyBlogDTO = { id: string; handle: string; title: string };
+export type ShopifyArticleCardDTO = {
+  id: string; handle: string; title: string; summary: string | null;
+  image: ShopifyImageDTO | null; publishedAt: string | null; isPublished: boolean;
+  author: { name: string } | null; blog: ShopifyBlogDTO | null;
+};
 export type ShopifyArticleDTO = {
   id: string; handle: string; title: string; summary: string | null; body: string | null;
   image: ShopifyImageDTO | null; tags: string[]; publishedAt: string | null;
-  createdAt: string; updatedAt: string; blog: ShopifyBlogDTO | null;
+  createdAt: string; updatedAt: string; author: { name: string } | null; blog: ShopifyBlogDTO | null;
 };
 export type ShopifyPage<T> = { items: T[]; pageInfo: { hasNextPage: boolean; endCursor: string | null } };

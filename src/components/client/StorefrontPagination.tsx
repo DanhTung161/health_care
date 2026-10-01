@@ -7,12 +7,14 @@ interface PaginationLink {
 }
 
 interface StorefrontPaginationProps {
+  ariaLabel?: string;
   currentPage: number;
   next?: PaginationLink;
   previous?: PaginationLink;
 }
 
 export default function StorefrontPagination({
+  ariaLabel = "Product pagination",
   currentPage,
   next,
   previous,
@@ -24,7 +26,7 @@ export default function StorefrontPagination({
   ];
 
   return (
-    <nav aria-label="Product pagination" className="storefront-pagination">
+    <nav aria-label={ariaLabel} className="storefront-pagination">
       {previous ? (
         <Link
           aria-label="Previous page"

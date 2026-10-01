@@ -13,8 +13,34 @@ import StorefrontServices from "@/components/client/StorefrontServices";
 import StorefrontTestimonials from "@/components/client/StorefrontTestimonials";
 import StorefrontTextRun from "@/components/client/StorefrontTextRun";
 import StorefrontWhyUs from "@/components/client/StorefrontWhyUs";
+import { toStorefrontArticleCard, type StorefrontArticleCard as StorefrontArticleCardViewModel } from "@/lib/shopify/article-view-model";
+import { ShopifyError } from "@/lib/shopify/config";
+import { getPublishedArticles } from "@/lib/shopify/content";
 
-export default function HomePage() {
+export default async function HomePage() {
+  let articles: StorefrontArticleCardViewModel[] = [];
+  let articleLoadFailed = false;
+
+  try {
+    const page = await getPublishedArticles({ first: 20 });
+    articles = page.items
+      .map((article) => toStorefrontArticleCard(article))
+      .filter((article): article is StorefrontArticleCardViewModel => article !== null);
+  } catch (error) {
+    articleLoadFailed = true;
+    console.error(
+      "Homepage Shopify articles could not be loaded",
+      error instanceof ShopifyError
+        ? {
+            code: error.code,
+            message: error.details?.graphqlMessage || error.message,
+            extensions: error.details?.graphqlCode ? { code: error.details.graphqlCode } : undefined,
+            path: error.details?.path,
+          }
+        : { code: "UNEXPECTED", message: "Unexpected article loading failure" },
+    );
+  }
+
   return (
     <StorefrontShell
       footer={
@@ -33,7 +59,7 @@ export default function HomePage() {
       <StorefrontTestimonials />
       <OurPricing />
       <OurTeam />
-      <StorefrontBlog />
+      <StorefrontBlog articles={articles} loadFailed={articleLoadFailed} />
       <StorefrontAppointment />
       <StorefrontTextRun />
     </StorefrontShell>

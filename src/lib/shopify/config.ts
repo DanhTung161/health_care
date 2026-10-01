@@ -2,10 +2,17 @@ import 'server-only';
 
 export const DEFAULT_SHOPIFY_API_VERSION = '2026-07';
 
+export type ShopifyErrorDetails = {
+  graphqlCode?: string;
+  graphqlMessage?: string;
+  path?: readonly (string | number)[];
+};
+
 export class ShopifyError extends Error {
   constructor(
     readonly code: 'NOT_CONFIGURED' | 'AUTHENTICATION' | 'INVALID_WEBHOOK' | 'SHOPIFY_API' | 'RATE_LIMIT' | 'INVALID_PAYLOAD' | 'STALE_EVENT' | 'DATA_INTEGRITY',
     message: string,
+    readonly details?: ShopifyErrorDetails,
   ) {
     super(message);
     this.name = 'ShopifyError';

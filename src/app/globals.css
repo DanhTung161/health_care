@@ -4091,6 +4091,150 @@ button { cursor: pointer; }
   .storefront-blog-page__container { width: calc(100% - 40px); }
 }
 
+/* Public Blog Detail. */
+.storefront-blog-detail {
+  padding: 120px 24px 140px;
+  background: var(--storefront-color-white);
+}
+
+.storefront-blog-detail__article {
+  width: min(100%, 960px);
+  margin-inline: auto;
+}
+
+.storefront-blog-detail__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  color: var(--storefront-color-body-muted);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 22px;
+}
+
+.storefront-blog-detail__category {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--storefront-color-primary);
+  font-weight: 600;
+}
+
+.storefront-blog-detail__category > span {
+  width: 6px;
+  height: 6px;
+  flex: 0 0 6px;
+  border-radius: 50%;
+  background: var(--storefront-color-primary);
+}
+
+.storefront-blog-detail__author { color: var(--storefront-color-ink); }
+.storefront-blog-detail__author > span { color: var(--storefront-color-body-muted); }
+
+.storefront-blog-detail__article > h1 {
+  margin: 18px 0 0;
+  color: var(--storefront-color-ink);
+  font-size: clamp(42px, 4vw, 64px);
+  font-weight: 500;
+  line-height: 1.125;
+  overflow-wrap: anywhere;
+}
+
+.storefront-blog-detail__featured-image {
+  position: relative;
+  width: 100%;
+  margin-top: 46px;
+  overflow: hidden;
+  border-radius: 20px;
+  aspect-ratio: 16 / 9;
+  background: #f3f3f3;
+}
+
+.storefront-blog-detail__featured-image img { object-fit: cover; }
+
+.storefront-blog-article-content {
+  margin-top: 48px;
+  color: var(--storefront-color-body);
+  font-size: 17px;
+  line-height: 1.8;
+  overflow-wrap: anywhere;
+}
+
+.storefront-blog-article-content > :first-child { margin-top: 0; }
+.storefront-blog-article-content > :last-child { margin-bottom: 0; }
+.storefront-blog-article-content p,
+.storefront-blog-article-content ul,
+.storefront-blog-article-content ol,
+.storefront-blog-article-content blockquote { margin: 0 0 24px; }
+.storefront-blog-article-content h2,
+.storefront-blog-article-content h3,
+.storefront-blog-article-content h4 {
+  margin: 42px 0 18px;
+  color: var(--storefront-color-ink);
+  font-weight: 500;
+  line-height: 1.25;
+}
+.storefront-blog-article-content h2 { font-size: 36px; }
+.storefront-blog-article-content h3 { font-size: 30px; }
+.storefront-blog-article-content h4 { font-size: 24px; }
+.storefront-blog-article-content ul,
+.storefront-blog-article-content ol { padding-left: 28px; }
+.storefront-blog-article-content li + li { margin-top: 8px; }
+.storefront-blog-article-content a {
+  color: var(--storefront-color-primary);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.storefront-blog-article-content a:focus-visible {
+  border-radius: 2px;
+  outline: 2px solid currentColor;
+  outline-offset: 3px;
+}
+.storefront-blog-article-content blockquote {
+  padding: 24px 28px;
+  border-left: 4px solid var(--storefront-color-primary);
+  background: #f7f7f7;
+  color: var(--storefront-color-ink);
+}
+.storefront-blog-article-content img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 16px;
+}
+.storefront-blog-article-content pre,
+.storefront-blog-article-content table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+@media (max-width: 1199px) {
+  .storefront-blog-detail { padding-block: 96px 120px; }
+}
+
+@media (max-width: 767px) {
+  .storefront-blog-detail { padding: 80px 16px 96px; }
+  .storefront-blog-detail__article > h1 {
+    font-size: clamp(36px, 9vw, 48px);
+    line-height: 1.15;
+  }
+  .storefront-blog-detail__featured-image,
+  .storefront-blog-article-content { margin-top: 38px; }
+  .storefront-blog-article-content h2 { font-size: 30px; }
+  .storefront-blog-article-content h3 { font-size: 26px; }
+}
+
+@media (max-width: 479px) {
+  .storefront-blog-detail { padding: 64px 12px 80px; }
+  .storefront-blog-detail__meta { gap: 8px 12px; }
+  .storefront-blog-detail__featured-image { border-radius: 16px; }
+  .storefront-blog-article-content {
+    font-size: 16px;
+    line-height: 1.75;
+  }
+}
+
 /* Storefront Homepage Appointment - Figma node 129:344. */
 .storefront-appointment {
   position: relative;

@@ -23,7 +23,7 @@ export interface ShopifyArticlePage {
   items: ShopifyArticleCardDTO[];
   pageInfo: ArticleConnection<ShopifyArticleCardDTO>['pageInfo'];
 }
-const ARTICLE_FIELDS = `id handle title summary body tags publishedAt createdAt updatedAt
+const ARTICLE_FIELDS = `id handle title summary body tags publishedAt isPublished createdAt updatedAt
   image { id url altText width height } author { name } blog { id handle title }`;
 const ARTICLE_CARD_FIELDS = `id handle title summary publishedAt isPublished
   image { id url altText width height } author { name } blog { id handle title }`;
@@ -103,9 +103,11 @@ export async function getArticleByHandle(handle: string, blogId?: string): Promi
   const blogNumericId = blogId?.slice('gid://shopify/Blog/'.length);
   const data = await shopifyGraphQL<{ articles: Connection<ShopifyArticleDTO> }>(
     `query ArticleByHandle($search: String!) { articles(first: 2, query: $search) { edges { node { ${ARTICLE_FIELDS} } } pageInfo { hasNextPage endCursor } } }`,
-    { search: `handle:${handle}${blogNumericId ? ` blog_id:${blogNumericId}` : ''}` },
+    { search: `handle:${handle} published_status:published${blogNumericId ? ` blog_id:${blogNumericId}` : ''}` },
   );
-  const exact = data.articles.edges.map(({ node }) => node).filter((article) => article.handle === handle);
+  const exact = data.articles.edges
+    .map(({ node }) => node)
+    .filter((article) => article.handle === handle && article.isPublished);
   if (exact.length > 1 || (!blogId && data.articles.pageInfo.hasNextPage)) throw new ShopifyError('DATA_INTEGRITY', 'Article handle is ambiguous across blogs');
   return exact[0] ?? null;
 }

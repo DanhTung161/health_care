@@ -22,7 +22,7 @@ export type ShopifyCollectionDTO = {
 export type ShopifyBlogDTO = { id: string; handle: string; title: string };
 export type ShopifyArticleCardDTO = {
   id: string; handle: string; title: string; summary: string | null;
-  image: ShopifyImageDTO | null; publishedAt: string | null; isPublished: boolean;
+  image: ShopifyImageDTO | null; tags: string[]; publishedAt: string | null; isPublished: boolean;
   author: { name: string } | null; blog: ShopifyBlogDTO | null;
 };
 export type ShopifyArticleDTO = {

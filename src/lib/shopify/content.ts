@@ -25,7 +25,7 @@ export interface ShopifyArticlePage {
 }
 const ARTICLE_FIELDS = `id handle title summary body tags publishedAt isPublished createdAt updatedAt
   image { id url altText width height } author { name } blog { id handle title }`;
-const ARTICLE_CARD_FIELDS = `id handle title summary publishedAt isPublished
+const ARTICLE_CARD_FIELDS = `id handle title summary tags publishedAt isPublished
   image { id url altText width height } author { name } blog { id handle title }`;
 
 export async function getBlogs(options: { first?: number; after?: string | null } = {}): Promise<ShopifyPage<ShopifyBlogDTO>> {
